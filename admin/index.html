@@ -609,7 +609,7 @@ V.inventory=()=>{loadImgs();const p=list('products');const cats=invCats();const 
  const chip=(attr,k,l,on)=>`<button type="button" class="chip${on?' on':''}" aria-pressed="${on}" ${attr}="${esc(k)}">${l}</button>`;
  return `<div class="eb">Master product list</div><div class="row"><h2>Inventory <span class="dcount">${p.length}</span></h2><button class="slc-btn primary" type="button" data-padd="1">+ ${tr('Add product')}</button></div>
 <div class="card pnote"><h3>${tr('One list for the whole app')}</h3><p>${tr('The customer menu, the machine builder and every machine slot pull their products from this list. In the live app, a change here updates them all. In this mock the customer side is a separate approved build, so it shows the same catalog names but does not update live.')}</p></div>
-<p class="pnote2"><span class="tag">${tr('Sample prices')}</span> ${tr('Prices and costs here are generated sample values, not your real ones. Products marked Real photo needed show a stand-in render on the customer side until a real photo is added.')}</p><div class="kv"><div><small>${tr('Products')}</small><b>${nf(p.length)}</b></div><div><small>${tr('Active')}</small><b class="pos">${nf(nAct)}</b></div><div><small>${tr('Real photo needed')}</small><b class="${nPh?'amb':'pos'}" id="invPh">${IMGS?nf(nPh):'…'}</b></div></div>
+<p class="pnote2"><span class="tag">${tr('Sample prices')}</span> ${tr('Prices and costs here are generated sample values, not your real ones. Products marked Real photo needed show a stand-in render on the customer side until a real photo is added.')}</p><div class="kv"><button type="button" class="kvbtn${invSt==='all'?' on':''}" aria-pressed="${invSt==='all'}" data-pst="all"><small>${tr('Products')}</small><b>${nf(p.length)}</b></button><button type="button" class="kvbtn${invSt==='active'?' on':''}" aria-pressed="${invSt==='active'}" data-pst="active"><small>${tr('Active')}</small><b class="pos">${nf(nAct)}</b></button><button type="button" class="kvbtn${invSt==='photo'?' on':''}" aria-pressed="${invSt==='photo'}" data-pst="photo"><small>${tr('Real photo needed')}</small><b class="${nPh?'amb':'pos'}" id="invPh">${IMGS?nf(nPh):'…'}</b></button></div>
 <div class="eb" style="margin-top:12px">${tr('Status')}</div><div class="dchips">${[['all','All'],['active','Active'],['inactive','Inactive'],['photo','Real photo needed']].map(([k,l])=>chip('data-pst',k,tr(l)+(k==='photo'&&IMGS?' · '+nPh:''),invSt===k)).join('')}</div>
 <div class="eb">${tr('Category')}</div><div class="dchips">${chip('data-pcat','all',tr('All')+' · '+p.length,invCat==='all')}${cats.map(c=>chip('data-pcat',c,esc(tr(c))+' · '+p.filter(x=>(x.cat||'Other')===c).length,invCat===c)).join('')}</div>
 ${f.length?`<div class="pgrid">${f.map(invCard).join('')}</div>`:`<div class="card dempty"><h3>${tr('No products here')}</h3><p>${tr('Nothing matches these filters. Pick All or add a product.')}</p><button class="slc-btn primary" type="button" data-padd="1">+ ${tr('Add product')}</button></div>`}
@@ -674,11 +674,20 @@ const wide=()=>matchMedia('(min-width:600px)').matches;let ibSel=null;
 const FEM={new:'nueva',contacted:'contactada',reviewed:'revisada',resolved:'resuelta'};function stLbl(x,s,cap){let t=ES()&&x.kind==='request'?FEM[s]:s;if(ES()&&x.kind!=='request')t={new:'nuevo',contacted:'contactado',reviewed:'revisado',resolved:'resuelto'}[s]||s;return cap?t[0].toUpperCase()+t.slice(1):t}
 function ibCard(x){return `<div class="card"><div class="row"><span class="pill local">${esc(x.kind)}</span>${x.kind==='problem'&&x.status!=='resolved'&&(Date.now()-new Date(x.created).getTime())>48*36e5?`<span class="pill" style="color:#f4b55a;border-color:#f4b55a">Open ${Math.floor((Date.now()-new Date(x.created).getTime())/864e5)}d</span>`:' '}<small style="color:var(--muted)">${when(x.created)}</small></div>${Object.entries(x.fields||{}).filter(([k,v])=>v).map(([k,v])=>`<p style="margin-top:4px"><b style="color:#ddd">${esc(k)}:</b> ${esc(v)}</p>`).join('')}<div class="chips">${STAT.map(s=>`<button type="button" class="chip ${x.status===s?'on':''}" data-st="${s}" data-id="${x.id}">${stLbl(x,s,1)}</button>`).join('')}</div></div>`}
 function ibSplit(sh){const sel=sh.find(x=>x.id===ibSel)||sh[0];const t=x=>{const f=x.fields||{};return f['Business name']||f['Name']||f['Your name']||f['Issue']||Object.values(f)[0]||x.kind};return `<div class="ibx"><div class="ibl">${sh.map(x=>`<button type="button" class="${x===sel?'on':''}" data-isel="${x.id}"><span class="pill local">${esc(x.kind)}</span> <small>${esc(stLbl(x,x.status))} · ${when(x.created)}</small><br/><b>${esc(String(t(x)).slice(0,60))}</b></button>`).join('')}</div><div>${ibCard(sel)}</div></div>`}
-V.inbox=()=>{const it=list('inbox'),shown=it.filter(x=>inboxF==='all'||x.kind===inboxF);
-return `<div class="eb">Customer submissions</div><h2>Inbox</h2><div class="chips">${KINDS.map(([k,l])=>`<button type="button" class="chip ${inboxF===k?'on':''}" data-if="${k}">${l}</button>`).join('')}</div>
-${inboxF==='refunds'?refundsView():`<div class="note">Items here come from the customer forms in this same app, saved on this device only. Nothing was sent anywhere.</div>
-${shown.length&&wide()?ibSplit(shown):''}${shown.length&&!wide()?shown.map(x=>`<div class="card"><div class="row"><span class="pill local">${esc(x.kind)}</span>${x.kind==='problem'&&x.status!=='resolved'&&(Date.now()-new Date(x.created).getTime())>48*36e5?`<span class="pill" style="color:#f4b55a;border-color:#f4b55a">Open ${Math.floor((Date.now()-new Date(x.created).getTime())/864e5)}d</span>`:' '}<small style="color:var(--muted)">${when(x.created)}</small></div>${Object.entries(x.fields||{}).filter(([k,v])=>v).map(([k,v])=>`<p style="margin-top:4px"><b style="color:#ddd">${esc(k)}:</b> ${esc(v)}</p>`).join('')}<div class="chips">${STAT.map(s=>`<button type="button" class="chip ${x.status===s?'on':''}" data-st="${s}" data-id="${x.id}">${stLbl(x,s,1)}</button>`).join('')}</div></div>`).join(''):(shown.length?'':'<div class="card"><p>No submissions yet. Try the Request, Rewards, Support or Contact forms in the customer app.</p></div>')}
-`}`};
+V.inbox=()=>{const it=list('inbox');
+const cnt=k=>k==='all'?it.length:k==='refunds'?list('refunds').length:it.filter(x=>x.kind===k).length;
+const nw=k=>it.filter(x=>x.status==='new'&&(k==='all'||x.kind===k)).length;
+const tabs=`<div class="ibtabs">${KINDS.map(([k,l])=>`<button type="button" class="ibtab${inboxF===k?' on':''}" data-if="${k}" aria-pressed="${inboxF===k}"><span>${l}</span><small>${cnt(k)}${k!=='refunds'&&nw(k)?' \u00b7 '+nw(k)+' new':''}</small></button>`).join('')}</div>`;
+const head=`<div class="eb">Customer submissions</div><h2>Inbox</h2>${tabs}`;
+if(inboxF==='refunds')return `${head}${refundsView()}`;
+const shown=it.filter(x=>inboxF==='all'||x.kind===inboxF);
+const sel=ibSel?shown.find(x=>x.id===ibSel):null;
+if(sel)return `${head}<button type="button" class="btn2 ibback" data-iback="1">\u2039 Back to list</button>${ibCard(sel)}`;
+const ttl=x=>{const f=x.fields||{};return f['Business name']||f['Name']||f['Your name']||f['Issue']||Object.values(f)[0]||x.kind};
+const pv=x=>{const t=ttl(x);const e=Object.entries(x.fields||{}).find(([k,v])=>v&&v!==t);return e?e[0]+': '+e[1]:''};
+const aged=x=>x.kind==='problem'&&x.status!=='resolved'&&(Date.now()-new Date(x.created).getTime())>48*36e5;
+const rows=shown.map(x=>`<button type="button" class="ibrow" data-iopen="${x.id}"><span class="ibrm"><span class="ibr1">${inboxF==='all'?`<span class="pill local">${esc(x.kind)}</span>`:''}<b>${esc(String(ttl(x)).slice(0,60))}</b>${x.status==='new'?'<i class="ibnew"></i>':''}</span><small>${esc(String(pv(x)).slice(0,90))}</small></span><span class="ibr2"><span class="pill ${x.status==='new'?'pending':x.status==='resolved'?'ok':'local'}">${esc(stLbl(x,x.status,1))}</span>${aged(x)?`<span class="pill" style="color:#f4b55a;border-color:#f4b55a">Open ${Math.floor((Date.now()-new Date(x.created).getTime())/864e5)}d</span>`:''}<small>${when(x.created)}</small></span><span class="ibchev">\u203a</span></button>`).join('');
+return `${head}<div class="note">Items here come from the customer forms in this same app, saved on this device only. Nothing was sent anywhere.</div>${shown.length?`<div class="iblist">${rows}</div>`:`<div class="card"><p>Nothing here yet. New submissions from the customer app will appear here.</p></div>`}`};
 const PAY=['card','zelle','cash','check','replacement'];
 function refundsView(){const r=list('refunds');return `<div class="note">The app is the only refund channel. Customer satisfaction over anything: hassle-free return of money or product. Demo refunds come from the customer “Request a refund” form, saved on this device.</div>
 ${r.length?r.map(x=>`<div class="card"><div class="row"><h3>${usd(x.amount)} · slot ${esc(x.slot||'—')}</h3><span class="pill ${x.status==='pending'?'pending':x.status==='approved'?'ok':'off'}">${x.status}${x.payout_status==='completed'?' · paid':''}</span></div>
@@ -752,7 +761,7 @@ function bindTab(){const tab=cur;
 function upd(k,id,f){const a=list(k),x=a.find(y=>y.id===id);if(x){f(x);SV(k,a)}render()}
 $('#slcMain').addEventListener('click',e=>{const t=e.target.closest('[data-padd],[data-pedit],[data-ptog],[data-pcat],[data-pst],[data-docrep],[data-docf],[data-docadd],[data-docview],[data-docmenu],[data-docdel]');if(!t)return;const d=t.dataset;if(d.padd)prodSheet();else if(d.pedit)prodSheet(d.pedit);else if(d.ptog){const a=list('products'),x=a.find(y=>y.id===d.ptog);if(x){x.active=x.active===false;SV('products',a);render()}}else if(d.pcat){invCat=d.pcat;render()}else if(d.pst){invSt=d.pst;render()}else if(d.docrep){const x=list('docs').find(y=>y.id===d.docrep);docAddSheet();if(x){$('#dT').value=x.title.replace(/\b(20\d\d)\b/,m=>String(+m+1));$('#dC').value=x.cat}}else if(d.docf){docF=d.docf;docMenu='';render()}else if(d.docadd)docAddSheet();else if(d.docview)docViewSheet(d.docview);else if(d.docmenu){docMenu=docMenu===d.docmenu?'':d.docmenu;$('#docList').innerHTML=docList()}else if(d.docdel){const x=list('docs').find(y=>y.id===d.docdel);if(x&&confirm(tr('Delete this document?')+'\n'+x.title)){SV('docs',list('docs').filter(y=>y.id!==d.docdel));let h=LS('docs_del')||[];h.push(d.docdel);SV('docs_del',h);docMenu='';render()}}});
 $('#slcMain').addEventListener('click',e=>{const t=e.target.closest('button,[data-day]');if(!t)return;const d=t.dataset;
- if(d.go){inboxF=d.f||'all';go(d.go,d.sub2)}
+ if(d.go){inboxF=d.f||'all';ibSel=null;go(d.go,d.sub2)}
  else if(d.tool)openTool(d.tool,d.tt);
  else if(d.pe){const x=list('products').find(y=>y.id===d.pe);if(!x)return;$('#pId').value=x.id;$('#pN').value=x.name;$('#pC').value=x.cat||'';$('#pCost').value=x.cost||'';$('#pSell').value=x.sell||'';$('#pM').textContent=margin(x.cost,x.sell);$('#invFormT').textContent='Edit product';$('#pN').scrollIntoView({block:'center'})}
  else if(d.pd){SV('products',list('products').filter(x=>x.id!==d.pd));render()}
@@ -769,7 +778,9 @@ $('#slcMain').addEventListener('click',e=>{const t=e.target.closest('button,[dat
  else if(d.sub){subSel[tab]=d.sub;render()}
  else if(d.ed){SV('events',list('events').filter(x=>x.id!==d.ed));render()}
  else if(d.pay){const m=document.querySelector(`[data-pm="${d.pay}"]`).value,a=document.querySelector(`[data-pa="${d.pay}"]`).value,r=document.querySelector(`[data-pr="${d.pay}"]`);push('payments',{bill:d.pay,method:m,amount:a,receipt:r.files[0]?r.files[0].name:'',date:new Date().toISOString().slice(0,10)});render()}
- else if(d.if){inboxF=d.if;render()}
+ else if(d.iopen){ibSel=d.iopen;render()}
+ else if(d.iback){ibSel=null;render()}
+ else if(d.if){inboxF=d.if;ibSel=null;render()}
  else if(d.st)upd('inbox',d.id,x=>x.status=d.st);
  else if(d.ra){const m=document.querySelector(`[data-rm="${d.ra}"]`).value,n=document.querySelector(`[data-rn="${d.ra}"]`).value;if(!m){alert(tr('Choose a payout method before approving.'));return}upd('refunds',d.ra,x=>Object.assign(x,{status:'approved',payout_method:m,owner_notes:n||x.owner_notes,reviewed_at:new Date().toISOString()}))}
  else if(d.rd){const n=document.querySelector(`[data-rn="${d.rd}"]`).value;upd('refunds',d.rd,x=>Object.assign(x,{status:'denied',owner_notes:n||x.owner_notes,reviewed_at:new Date().toISOString()}))}
@@ -777,7 +788,7 @@ $('#slcMain').addEventListener('click',e=>{const t=e.target.closest('button,[dat
  else if(d.nt){const n=LS('notif')||{new_request:1,machine_problem:1,refund_request:1,bill_due:1,maintenance_due:1};n[d.nt]=n[d.nt]?0:1;SV('notif',n);render()}
  else if(d.pt){const p=LS('perms')||{};p[d.pt]=!p[d.pt];SV('perms',p);render()}
 });
-function dockClick(e){const b=e.target.closest('button');if(!b)return;if(b.dataset.more!=null){moreOpen=b.dataset.more==='1'&&!moreOpen;dock();xl($('#slcDock'));return}moreOpen=false;{if(b.dataset.tab==='inbox'&&tab!=='inbox')inboxF='all';go(b.dataset.tab)}}
+function dockClick(e){const b=e.target.closest('button');if(!b)return;if(b.dataset.more!=null){moreOpen=b.dataset.more==='1'&&!moreOpen;dock();xl($('#slcDock'));return}moreOpen=false;{if(b.dataset.tab==='inbox'&&tab!=='inbox')inboxF='all';ibSel=null;go(b.dataset.tab)}}
 {const _r=render;render=function(){_r();afterRender()}}$('#slcMain').addEventListener('scroll',slimChk,{passive:true});{const hd=()=>{const h=document.querySelector('#slc .hd');if(h)document.getElementById('slc').style.setProperty('--hdh',h.offsetHeight+'px')};hd();let lw=wide();addEventListener('resize',()=>{hd();if(wide()!==lw){lw=wide();if(document.getElementById('slc').offsetParent!==null||1)render()}})}$('#slcValS').addEventListener('click',e=>{if(e.target.id==='slcValS'||e.target.id==='slcValClose')openVal(false)});
 $('#slcDock').addEventListener('click',dockClick);$('#slcMore').addEventListener('click',e=>{if(e.target.id==='slcMore'){moreOpen=false;dock();xl($('#slcDock'));return}dockClick(e)});
 function openTool(id,t){if(!window.fsDecode)return;const f=$('#slcOvF');if(f.dataset.k!==id){f.srcdoc=fsDecode(id);f.dataset.k=id}$('#slcOvT').textContent=t;$('#slcOv').classList.add('open')}
@@ -867,6 +878,29 @@ setInterval(tag,900);document.addEventListener('click',function(){setTimeout(tag
 #slc .kv div{background:linear-gradient(180deg,#252c66,#1b2152)!important;border:1px solid #4a53a3;border-radius:16px;padding:12px 10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
 #slc .kv small{color:#b9bde4}
 #slc .kv b{font-size:20px;color:#fff}
+#slc .kv button.kvbtn{font:inherit;text-align:center;-webkit-appearance:none;appearance:none;background:linear-gradient(180deg,#252c66,#1b2152);border:1px solid #4a53a3;border-radius:16px;padding:12px 10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.08);cursor:pointer;color:inherit;transition:transform .12s ease,border-color .12s ease,box-shadow .12s ease}
+#slc .kv button.kvbtn:active{transform:scale(.98)}
+#slc .kv button.kvbtn.on{border-color:#ffb454;box-shadow:0 0 0 2px rgba(255,180,84,.5),inset 0 1px 0 rgba(255,255,255,.08)}
+#slc .ibtabs{display:flex;gap:8px;overflow-x:auto;padding:4px 0 12px;scrollbar-width:none}
+#slc .ibtabs::-webkit-scrollbar{display:none}
+#slc .ibtab{flex:0 0 auto;min-width:98px;font:inherit;text-align:left;-webkit-appearance:none;appearance:none;background:#1b2152;border:1px solid #454e96;border-radius:16px;padding:10px 12px;cursor:pointer}
+#slc .ibtab span{display:block;font-weight:700;font-size:14px;color:#fff}
+#slc .ibtab small{display:block;margin-top:2px;font-size:11px;color:#b9bde4}
+#slc .ibtab.on{background:linear-gradient(135deg,#ff7a59,#ffb454);border-color:transparent}
+#slc .ibtab.on span{color:#33150a}
+#slc .ibtab.on small{color:#5c2d12}
+#slc .iblist{display:flex;flex-direction:column;gap:8px}
+#slc .ibrow{display:flex;align-items:center;gap:10px;width:100%;font:inherit;text-align:left;-webkit-appearance:none;appearance:none;background:linear-gradient(180deg,#252c66,#1b2152);border:1px solid #4a53a3;border-radius:16px;padding:12px;cursor:pointer;color:inherit}
+#slc .ibrow:active{transform:scale(.99)}
+#slc .ibrm{flex:1;min-width:0}
+#slc .ibr1{display:flex;align-items:center;gap:6px}
+#slc .ibr1 b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
+#slc .ibrm>small{display:block;margin-top:3px;color:#b9bde4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#slc .ibr2{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:0 0 auto}
+#slc .ibr2 small{color:#b9bde4}
+#slc .ibnew{width:8px;height:8px;border-radius:50%;background:#57b6ff;flex:0 0 auto}
+#slc .ibchev{color:#b9bde4;font-size:20px;flex:0 0 auto}
+#slc .ibback{margin-bottom:10px}
 #slc .gg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin-top:12px}
 #slc .gg-gauge{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;padding:10px 8px 12px;background:linear-gradient(180deg,#252c66,#1b2152);border:1px solid #4a53a3;border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.08);cursor:pointer;font:inherit;text-align:center}
 #slc .gg-gauge:hover{border-color:#8f96d8}
