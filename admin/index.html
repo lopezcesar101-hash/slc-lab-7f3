@@ -364,6 +364,19 @@ function outSlots(m){return m.slots.filter(s=>s.qty===0)}
 function chg(cur,prev){const p=prev?((cur-prev)/prev*100):0;return sgn(p,(p>=0?'▲ ':'▼ ')+Math.abs(p).toFixed(0)+'%')}
 function kpis(ms){const t=sumMany(ms,1),w=sumMany(ms,7),mo=sumMany(ms,30),pw=sumMany(ms,14);const prevW={gross:pw.gross-w.gross};
  return `<div class="kv"><div><small>Today</small><b data-today="${r2(t.gross)}">${money(t.gross)}</b><br/><small>${nf(t.vends)} vends</small></div><div><small>7 days</small><b>${money(w.gross)}</b><br/><small>${chg(w.gross,prevW.gross)} vs prior week</small></div><div><small>30 days</small><b>${money(mo.gross)}</b><br/><small>${nf(mo.vends)} vends</small></div><div><small>Card / cash (30d)</small><b>${pct(mo.card,mo.gross)}% / ${pct(mo.cash,mo.gross)}%</b><br/><small>${money0(mo.card)} / ${money0(mo.cash)}</small></div></div>`}
+/* ===== OVERVIEW GAUGE CLUSTER (gauge001) — Overview only; kpis() untouched ===== */
+function ggArc(cx,cy,r,t0,t1){const pt=u=>{const a=(150+240*u)*Math.PI/180;return[cx+r*Math.cos(a),cy+r*Math.sin(a)]};const[x0,y0]=pt(t0),[x1,y1]=pt(t1);return `M${x0.toFixed(1)} ${y0.toFixed(1)} A${r} ${r} 0 ${(t1-t0)*240>180?1:0} 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`}
+function ggTicks(cx,cy){let s='';for(let i=0;i<=24;i++){const u=i/24,maj=i%2===0,a=(150+240*u)*Math.PI/180,r0=maj?66:69,r1=76;s+=`<line x1="${(cx+r0*Math.cos(a)).toFixed(1)}" y1="${(cy+r0*Math.sin(a)).toFixed(1)}" x2="${(cx+r1*Math.cos(a)).toFixed(1)}" y2="${(cy+r1*Math.sin(a)).toFixed(1)}" stroke="${maj?'#8f96d8':'#4a53a3'}" stroke-width="${maj?2:1}"/>`}return s}
+function ggGauge(o){const cx=100,cy=94,fr=Math.max(0,Math.min(1,o.frac||0)),ang=(-120+240*fr).toFixed(1);
+ return `<button type="button" class="gg-gauge" data-go="${o.go}" aria-label="${o.label}: ${o.value}"><svg class="gg-svg" viewBox="0 0 200 168" aria-hidden="true"><path d="${ggArc(cx,cy,70,0,1)}" fill="none" stroke="rgba(169,173,214,.20)" stroke-width="11" stroke-linecap="round"/><path class="gg-fill" style="--f:${fr}" d="${ggArc(cx,cy,70,0,Math.max(fr,0.001))}" fill="none" stroke="${o.color}" stroke-width="11" stroke-linecap="round" pathLength="1" stroke-dasharray="${fr} 1"/>${ggTicks(cx,cy)}<g class="gg-needle" style="--a:${ang}deg;transform:rotate(${ang}deg)"><polygon points="96.5,${cy} 103.5,${cy} 100,${cy-54}" fill="#eef0ff"/></g><circle cx="${cx}" cy="${cy}" r="6.5" fill="#252c66" stroke="#8f96d8" stroke-width="2"/><text class="gg-lab" x="${cx}" y="${cy-24}" text-anchor="middle">${o.label}</text><text class="gg-val" x="${cx}" y="${cy+30}" text-anchor="middle"${o.attrs||''}>${o.value}</text></svg><small class="gg-cap">${o.cap}</small></button>`}
+function gaugeCluster(ms){const t=sumMany(ms,1),w=sumMany(ms,7),mo=sumMany(ms,30),pw=sumMany(ms,14);const prevW=pw.gross-w.gross;const avg=mo.gross/30;const on=ms.filter(m=>m.online).length;const cardF=mo.gross?mo.card/mo.gross:0;const marg=mo.gross?(mo.gross-mo.cost-mo.card*FEE_RATE)/mo.gross:0;
+ return `<div class="gg-grid">`
+ +ggGauge({go:'reports',color:'#56c8f5',label:'TODAY',frac:avg>0?t.gross/avg:0,value:money(t.gross),attrs:` data-today="${r2(t.gross)}"`,cap:`Avg ${money(avg)} a day · ${nf(t.vends)} vends`})
+ +ggGauge({go:'reports',color:'#9d8cff',label:'LAST 7 DAYS',frac:Math.max(w.gross,prevW)>0?w.gross/Math.max(w.gross,prevW):0,value:money(w.gross),cap:`${chg(w.gross,prevW)} vs prior week`})
+ +ggGauge({go:'reports',color:'#ffb454',label:'CARD SHARE · 30D',frac:cardF,value:pct(mo.card,mo.gross)+'%',cap:`${money0(mo.card)} card · ${money0(mo.cash)} cash`})
+ +ggGauge({go:'reports',color:'#72d69f',label:'MARGIN · 30D',frac:marg,value:(marg*100).toFixed(1)+'%',cap:`After cost + card fees, before refunds · 30d sales ${money0(mo.gross)}`})
+ +ggGauge({go:'machines',color:'#ff6b8a',label:'MACHINES ONLINE',frac:ms.length?on/ms.length:0,value:`${on}/${ms.length}`,cap:on===ms.length?`<span style="color:#72d69f">All online</span>`:`<span style="color:#ff6b8a">${ms.length-on} offline</span>`})
+ +`</div>`}
 const LIMITS=[['callin','Days since last call-in',3,'Offline'],['credit','Days since last credit sale',5,'No sales'],['cash','Days since last cash sale',5,'No sales'],['fill','Days since last fill',30,'Fill overdue'],['dex','Days since last DEX',10,'DEX missing']];
 const ALERTS=['Product Sold Out','Column Jam','Card Reader Error','Card Reader has stopped communicating','Communications Error','Door Opened / Closed','Cabinet Temperature','Bill Validator Error','Coin Mech Error','Bill acceptor / coin changer alerts','Dex Exception','DEX not transmitted (reported)','Machine Error','Device Alert'];
 function locOf(id){const g=DEVICES.find(x=>x[1].includes(id));return g?g[0]:''}
@@ -462,7 +475,7 @@ V.overview=()=>{const c=counts(),S=sd(),ms=S.machines;const n=(v,bad)=>`<b class
 return `<div class="eb">Daily command center</div><h2>Overview</h2>
 <div class="refbar"><button type="button" class="btn2" id="slcRefresh" ${refreshing?'disabled aria-busy="true"':''}><span class="spin ${refreshing?'on':''}">↻</span> ${refreshing?'Refreshing…':'Refresh'}</button><small id="slcUpd">Last updated: ${updTxt()}</small><button type="button" class="btn2" data-go="reports" id="slcMkRep">Create report</button></div>
 <div class="valpin"><button type="button" id="slcValBar" tabindex="-1" aria-hidden="true">${valBar()}</button></div>${valCard()}
-<div class="ov2"><div class="card"><div class="row"><h3>Sales, all machines</h3></div>${kpis(ms)}</div>
+<div class="ov2"><div class="card"><div class="row"><h3>Sales, all machines</h3></div>${gaugeCluster(ms)}</div>
 <div class="card"><div class="row"><h3>Needs attention</h3></div>
 <div class="li"><span>Machines offline</span>${n(off,1)}</div><div class="li"><span>Open machine alerts</span>${n(al,1)}</div>
 <div class="li"><span>Pending refunds</span>${n(c.pend,1)}</div><div class="li"><span>Approved refunds not yet paid</span>${n(c.unpaid,1)}</div><div class="li"><span>New machine requests</span>${n(c.req)}</div><div class="li"><span>New support reports</span>${n(c.sup,1)}</div><div class="li"><span>New referrals</span>${n(c.ref)}</div><div class="li"><span>New messages</span>${n(c.msg)}</div>${attExtra()}
@@ -854,6 +867,19 @@ setInterval(tag,900);document.addEventListener('click',function(){setTimeout(tag
 #slc .kv div{background:linear-gradient(180deg,#252c66,#1b2152)!important;border:1px solid #4a53a3;border-radius:16px;padding:12px 10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
 #slc .kv small{color:#b9bde4}
 #slc .kv b{font-size:20px;color:#fff}
+#slc .gg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;margin-top:12px}
+#slc .gg-gauge{display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;padding:10px 8px 12px;background:linear-gradient(180deg,#252c66,#1b2152);border:1px solid #4a53a3;border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,.08);cursor:pointer;font:inherit;text-align:center}
+#slc .gg-gauge:hover{border-color:#8f96d8}
+#slc .gg-gauge:focus-visible{outline:2px solid #56c8f5;outline-offset:2px}
+#slc .gg-svg{width:100%;max-width:190px;height:auto;display:block}
+#slc .gg-lab{fill:#b9bde4;font-size:11px;font-weight:700;letter-spacing:.12em}
+#slc .gg-val{fill:#fff;font-size:25px;font-weight:800}
+#slc .gg-cap{color:#b9bde4;font-size:12px;line-height:1.35}
+#slc .gg-fill{animation:ggFill .8s ease-out}
+#slc .gg-needle{transform-origin:100px 94px;transform-box:view-box;animation:ggNeedle .8s ease-out}
+@keyframes ggFill{from{stroke-dasharray:0 1}to{stroke-dasharray:var(--f) 1}}
+@keyframes ggNeedle{from{transform:rotate(-120deg)}to{transform:rotate(var(--a))}}
+@media (prefers-reduced-motion: reduce){#slc .gg-fill,#slc .gg-needle{animation:none}}
 #slc .valc{background:linear-gradient(130deg,#43307e 0%,#83305f 52%,#c2542f 100%)!important;border-color:rgba(255,197,120,.55);border-radius:24px;box-shadow:0 18px 40px rgba(20,4,28,.5), inset 0 1px 0 rgba(255,255,255,.18)}
 #slc .valc .vl>small{color:#ffd9a0}#slc .valc .vd small,#slc .valc .vs,#slc .valc .vr small{color:#e9d9ff}
 #slc .spk line,#slc .spk polyline,#slc .spk path{stroke:#ffd166!important}
