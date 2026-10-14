@@ -482,7 +482,7 @@ function fcCard(ms,title){const f=forecast(ms);return `<div class="card"><div cl
 V.overview=()=>{const c=counts(),S=sd(),ms=S.machines;const n=(v,bad)=>`<b class="${v&&bad?'bad':''}">${v}</b>`;const al=ms.reduce((a,m)=>a+m.alerts.length,0),off=ms.filter(m=>!m.online).length,out=ms.reduce((a,m)=>a+outSlots(m).length,0),low=ms.reduce((a,m)=>a+lowSlots(m).length,0);const V_=valuation();
 return `<div class="eb">Daily command center</div><h2>Overview</h2>
 <div class="refbar"><button type="button" class="btn2" id="slcRefresh" ${refreshing?'disabled aria-busy="true"':''}><span class="spin ${refreshing?'on':''}">↻</span> ${refreshing?'Refreshing…':'Refresh'}</button><small id="slcUpd">Last updated: ${updTxt()}</small><button type="button" class="btn2" data-go="reports" id="slcMkRep">Create report</button></div>
-<div class="valpin"><button type="button" id="slcValBar" tabindex="-1" aria-hidden="true">${valBar()}</button></div>${valCard()}
+
 <div class="ov2"><div class="card"><div class="row"><h3>Sales, all machines</h3></div>${gaugeCluster(ms)}</div>
 <div class="card"><div class="row"><h3>Needs attention</h3></div>
 <div class="li"><span>Machines offline</span>${n(off,1)}</div><div class="li"><span>Open machine alerts</span>${n(al,1)}</div>
