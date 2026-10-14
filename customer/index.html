@@ -932,6 +932,20 @@ body>main>.screen>.eyebrow,body>main>.screen>h1,body>main>.screen>p{text-align:c
 html.fs-scrolling :is(.fs-glass,.glass,.card,.hero,.fs-seg,.top,.nav,.stage-card,.summary,.queue,.stock-head,.fs-mcard){-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 html.fs-scrolling .nav{background-color:rgba(10,10,12,.92)!important}
 html.fs-scrolling .fs-fire canvas{visibility:hidden}
+</style><style>
+/* Bori Oct 14: category tile area - static grid, richer graphics (no scroll, no cut-off tiles) */
+.fs-offer .fs-cat-h{display:flex;align-items:center;gap:12px;color:#e9b26b;letter-spacing:.14em;margin:2px 0 10px}
+.fs-offer .fs-cat-h::before,.fs-offer .fs-cat-h::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(240,180,90,.45),transparent)}
+.fs-offer .fs-tiles{display:grid;gap:10px;overflow:visible;padding:2px 0 0;margin:0;scroll-snap-type:none}
+.fs-offer .fs-cat:first-child .fs-tiles{grid-template-columns:repeat(3,1fr)}
+.fs-offer .fs-cat:last-child .fs-tiles{grid-template-columns:repeat(2,1fr)}
+.fs-offer .fs-cat+.fs-cat .fs-tiles{-webkit-mask-image:none;mask-image:none}
+.fs-offer .fs-tile{flex:none;width:auto;justify-content:center;gap:10px;padding:14px 6px 12px;border-radius:20px;background:linear-gradient(165deg,rgba(255,176,84,.15),rgba(255,255,255,.03) 45%,rgba(0,0,0,.5)),#1b1b1f;border:1px solid rgba(255,179,71,.30);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),inset 0 -14px 24px rgba(0,0,0,.35),0 8px 20px rgba(0,0,0,.40)}
+.fs-offer .fs-cat:first-child .fs-tile{aspect-ratio:1/1.04}
+.fs-offer .fs-tile svg{width:52px;height:52px;padding:13px;box-sizing:border-box;border-radius:50%;background:radial-gradient(circle at 50% 32%,rgba(255,190,90,.34),rgba(255,150,50,.12) 55%,rgba(255,140,40,.04) 78%);border:1px solid rgba(255,190,100,.45);color:#ffc06a;filter:drop-shadow(0 3px 8px rgba(255,160,60,.30))}
+.fs-offer .fs-cat:last-child .fs-tile svg{width:56px;height:56px;padding:14px}
+.fs-offer .fs-tile-l{font-size:13.5px;font-weight:650}
+html[lang=es] .fs-offer .fs-tile-l{font-size:13px}
 </style><script>/* FS Home: "machines for every space" section (after the benefit cards, before Our Story). Copy approved scope only: no prices or numbers. */
 (function(){var q=document.querySelector('.screen-home .quick');if(!q||document.querySelector('.fs-offer'))return;
  function t(en,es){return '<span class="en">'+en+'</span><span class="es">'+es+'</span>'}
