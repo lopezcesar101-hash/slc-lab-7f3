@@ -711,7 +711,7 @@ const ttl=x=>{const f=x.fields||{};return f['Business name']||f['Name']||f['Your
 const pv=x=>{const t=ttl(x);const e=Object.entries(x.fields||{}).find(([k,v])=>v&&v!==t);return e?e[0]+': '+e[1]:''};
 const aged=x=>x.kind==='problem'&&x.status!=='resolved'&&(Date.now()-new Date(x.created).getTime())>48*36e5;
 const rows=shown.map(x=>`<button type="button" class="ibrow" data-iopen="${x.id}"><span class="ibrm"><span class="ibr1">${inboxF==='all'?`<span class="pill local">${esc(x.kind)}</span>`:''}<b>${esc(String(ttl(x)).slice(0,60))}</b>${x.status==='new'?'<i class="ibnew"></i>':''}</span><small>${esc(String(pv(x)).slice(0,90))}</small></span><span class="ibr2"><span class="pill ${x.status==='new'?'pending':x.status==='resolved'?'ok':'local'}">${esc(stLbl(x,x.status,1))}</span>${aged(x)?`<span class="pill" style="color:#f4b55a;border-color:#f4b55a">Open ${Math.floor((Date.now()-new Date(x.created).getTime())/864e5)}d</span>`:''}<small>${when(x.created)}</small></span><span class="ibchev">\u203a</span></button>`).join('');
-return `${head}<div class="note">Items here come from the customer forms in this same app, saved on this device only. Nothing was sent anywhere.</div>${shown.length?`<div class="iblist">${rows}</div>`:`<div class="card"><p>Nothing here yet. New submissions from the customer app will appear here.</p></div>`}`};
+return `${head}<div class="note">Items here come from the customer forms in this same app, saved on this device only. Nothing was sent anywhere.</div>${shown.length?`<div class="iblist">${rows}</div>`:`<div class="card"><p>Nothing here yet. New submissions from the customer app will appear here.</p></div>`}${ownerTestCard()}`};
 const PAY=['card','zelle','cash','check','replacement'];
 function refundsView(){const r=list('refunds');return `<div class="note">The app is the only refund channel. Customer satisfaction over anything: hassle-free return of money or product. Demo refunds come from the customer “Request a refund” form, saved on this device.</div>
 ${r.length?r.map(x=>`<div class="card"><div class="row"><h3>${usd(x.amount)} · slot ${esc(x.slot||'—')}</h3><span class="pill ${x.status==='pending'?'pending':x.status==='approved'?'ok':'off'}">${x.status}${x.payout_status==='completed'?' · paid':''}</span></div>
@@ -826,6 +826,7 @@ $('#slcMain').addEventListener('click',e=>{const t=e.target.closest('button,[dat
  else if(d.aif){SLC_AI.setFeature(d.aif,!SLC_AI.featureOn(d.aif));render()}
  else if(d.aicap){const v=parseInt((document.getElementById('aiCap')||{}).value,10);if(v>0)SLC_AI.setCap(v);render()}
  else if(d.aireset){SLC_AI.resetUsage();render()}
+ else if(d.otclear){SV('owner_test_submissions_v1',[]);render()}
 });
 function dockClick(e){const b=e.target.closest('button');if(!b)return;if(b.dataset.more!=null){moreOpen=b.dataset.more==='1'&&!moreOpen;dock();xl($('#slcDock'));return}moreOpen=false;{if(b.dataset.tab==='inbox'&&tab!=='inbox')inboxF='all';ibSel=null;go(b.dataset.tab)}}
 {const _r=render;render=function(){_r();afterRender()}}$('#slcMain').addEventListener('scroll',slimChk,{passive:true});{const hd=()=>{const h=document.querySelector('#slc .hd');if(h)document.getElementById('slc').style.setProperty('--hdh',h.offsetHeight+'px')};hd();let lw=wide();addEventListener('resize',()=>{hd();if(wide()!==lw){lw=wide();if(document.getElementById('slc').offsetParent!==null||1)render()}})}$('#slcValS').addEventListener('click',e=>{if(e.target.id==='slcValS'||e.target.id==='slcValClose')openVal(false)});
@@ -890,7 +891,7 @@ document.querySelectorAll('input[name=lang]').forEach(r=>r.addEventListener('cha
  * NO network calls happen today. */
 /* ----- Shared AI controls contract (IDENTICAL in the admin and customer apps — do not drift) -----
  * Registry ids: admin 'receipt_snap','doc_autofile','inbox_copilot','ask_data';
- *               customer 'scanner','compare_scans','placement_assistant'.
+ *               customer 'scanner','compare_scans','placement_assistant','spot_check'.
  * localStorage 'slc_ai_controls_v1': {cap:20, restHours:12, features:{<id>:{on:true}}} (defaults when absent)
  * localStorage 'slc_ai_usage_v1':    {count:0, perFeature:{}, restUntil:0, windowStart:<ts>} — THIS phone's ledger.
  * call(task, payload): task maps to a feature id; feature off -> {ok:false, off:true};
@@ -899,8 +900,8 @@ document.querySelectorAll('input[name=lang]').forEach(r=>r.addEventListener('cha
  * the ledger before counting; otherwise the use is counted (count + perFeature) and the call resolves
  * {ok:false, connected:false} — today's honest state. Still NO network calls; the /api/ai activation
  * contract above is unchanged. */
-const AI_FEATURES=[['receipt_snap','Receipt snap','Foto de recibo','Admin'],['doc_autofile','Document auto-file','Archivo automático','Admin'],['inbox_copilot','Inbox co-pilot','Copiloto de mensajes','Admin'],['ask_data','Ask your data','Pregunta a tus datos','Admin'],['scanner','Product scanner','Escáner de productos','Customer'],['compare_scans','Compare scans','Comparar escaneos','Customer'],['placement_assistant','Placement assistant','Asistente de colocación','Customer']];
-const AI_TASK2FEAT={receipt_snap:'receipt_snap',receipt:'receipt_snap',doc_autofile:'doc_autofile',autofile:'doc_autofile',inbox_copilot:'inbox_copilot',draft_reply:'inbox_copilot',ask_data:'ask_data',ask:'ask_data',scanner:'scanner',scan_product:'scanner',compare_scans:'compare_scans',compare:'compare_scans',placement_assistant:'placement_assistant',placement:'placement_assistant'};
+const AI_FEATURES=[['receipt_snap','Receipt snap','Foto de recibo','Admin'],['doc_autofile','Document auto-file','Archivo automático','Admin'],['inbox_copilot','Inbox co-pilot','Copiloto de mensajes','Admin'],['ask_data','Ask your data','Pregunta a tus datos','Admin'],['scanner','Product scanner','Escáner de productos','Customer'],['compare_scans','Compare scans','Comparar escaneos','Customer'],['placement_assistant','Placement assistant','Asistente de colocación','Customer'],['spot_check','Spot check','Revisión del lugar','Customer']];
+const AI_TASK2FEAT={receipt_snap:'receipt_snap',receipt:'receipt_snap',doc_autofile:'doc_autofile',autofile:'doc_autofile',inbox_copilot:'inbox_copilot',draft_reply:'inbox_copilot',ask_data:'ask_data',ask:'ask_data',scanner:'scanner',scan_product:'scanner',compare_scans:'compare_scans',compare:'compare_scans',placement_assistant:'placement_assistant',placement:'placement_assistant',spot_check:'spot_check',spot:'spot_check'};
 function aiControlsRaw(){let c=null;try{c=LS('ai_controls_v1')}catch(e){}if(!c||typeof c!=='object')c={};if(!(c.cap>0))c.cap=20;if(!(c.restHours>0))c.restHours=12;if(!c.features||typeof c.features!=='object')c.features={};return c}
 function aiUsageRaw(){let u=null;try{u=LS('ai_usage_v1')}catch(e){}if(!u||typeof u!=='object')u={};if(!(u.count>=0))u.count=0;if(!u.perFeature||typeof u.perFeature!=='object')u.perFeature={};if(!(u.restUntil>=0))u.restUntil=0;if(!u.windowStart)u.windowStart=Date.now();return u}
 window.SLC_AI={connected:false,
@@ -950,7 +951,16 @@ Object.assign(SLC_ES,{
 "Placement assistant":"Asistente de colocación",
 "Save limit":"Guardar límite",
 "Reset usage counters":"Restablecer contadores de uso",
-"Off — turned off in AI controls.":"Desactivado — apagado en Controles de IA."
+"Off — turned off in AI controls.":"Desactivado — apagado en Controles de IA.",
+"Spot check":"Revisión del lugar",
+"Owner test":"Prueba del dueño",
+"Your test submissions — never counted in real request numbers.":"Tus envíos de prueba — nunca se cuentan en los números reales de solicitudes.",
+"Product request":"Solicitud de producto",
+"Referral":"Referencia",
+"Clear owner tests":"Borrar pruebas del dueño",
+"Machine number":"Número de máquina",
+"Product":"Producto",
+"Company":"Empresa"
 });
 /* ---------- AI controls panel (Settings › General) ----------
  * One row per registered feature (both apps), its on/off switch, and THIS device's use count.
@@ -962,6 +972,26 @@ function aiControlsCard(){const c=SLC_AI.controls(),u=SLC_AI.usage(),es=ES(),now
   return `<button type="button" class="tg" data-aif="${f[0]}"><span>${es?f[2]:f[1]} <small style="color:var(--muted)">· ${f[3]==='Admin'?(es?'Administración':'Admin'):(es?'Cliente':'Customer')} · ${n} ${es?'usos':'uses'}</small></span><i style="color:${on?'var(--green)':'rgba(255,255,255,.4)'}">${on?'On':'Off'}</i></button>`};
  const grp=s=>`<div style="margin-top:10px"><small style="color:var(--muted);font-weight:700;letter-spacing:.1em">${s==='Admin'?(es?'ADMINISTRACIÓN':'ADMIN'):(es?'CLIENTE':'CUSTOMER')}</small>${AI_FEATURES.filter(f=>f[3]===s).map(row).join('')}</div>`;
  return `<div class="card"><div class="row"><h3>${es?'Controles de IA':'AI controls'}</h3>${LOCAL}</div><p style="font-size:12px;color:var(--muted)">${es?'Los conteos son de este dispositivo. Cada teléfono lleva su propio conteo; los totales se combinan cuando la IA se conecte en el lanzamiento.':'Counts are on this device. Each phone keeps its own count; totals combine when the AI connects at launch.'}</p><p style="margin-top:8px">${es?'Usos de IA en este dispositivo':'AI uses on this device'}: <b>${u.count||0} / ${c.cap}</b>${resting?` · <span style="color:var(--amber)">${es?'Descansando hasta':'Resting until'} ${aiFmtT(u.restUntil)}</span>`:''}</p>${grp('Admin')}${grp('Customer')}<label class="f" style="margin-top:12px"><span>${es?'Límite de usos por teléfono':'Use limit per phone'}</span><input id="aiCap" type="number" min="1" step="1" inputmode="numeric" value="${c.cap}"/></label><div class="acts"><button type="button" class="slc-btn" data-aicap="1">${es?'Guardar límite':'Save limit'}</button></div><p style="margin-top:8px;font-size:12px;color:var(--muted)">${es?'Descanso tras alcanzar el límite':'Rest after the limit'}: <b>${c.restHours} ${es?'horas':'hours'}</b></p><div class="acts"><button type="button" class="btn2" data-aireset="1">${es?'Restablecer contadores de uso':'Reset usage counters'}</button></div></div>`}
+/* ---------- Owner-test submissions (Inbox group) ----------
+ * Bori's own test submissions from the customer app (owner-test mode) land in
+ * localStorage 'slc_owner_test_submissions_v1' — a store nothing else reads.
+ * They render in the Inbox as their own tagged group and are NEVER part of
+ * list('inbox'), so counts(), the dock badge, and every request tally exclude
+ * them by construction. Empty store -> the group renders nothing (no clutter).
+ * This device is the preview channel; at activation the back end routes them. */
+function ownerTestList(){let t=null;try{t=LS('owner_test_submissions_v1')}catch(e){}return Array.isArray(t)?t.filter(x=>x&&x.owner_test):[]}
+function ownerTestCard(){const t=ownerTestList();if(!t.length)return '';const es=ES();
+ const lab=k=>{const s=String(k).toLowerCase();
+  if(s.includes('machine'))return es?'Número de máquina':'Machine number';
+  if(s.includes('phone')||s.includes('contact'))return es?'Teléfono':'Phone';
+  if(s.includes('compan'))return es?'Empresa':'Company';
+  if(s.includes('locat')||s.includes('address'))return es?'Ubicación':'Location';
+  if(s.includes('product')||s.includes('item'))return es?'Producto':'Product';
+  if(s.includes('name'))return es?'Nombre':'Name';
+  return k};
+ const card=r=>{const f=r.fields||{};
+  return `<div class="card"><div class="row"><span class="pill local">${r.kind==='referral'?'Referral':'Product request'}</span><span class="pill" style="color:#f4b55a;border-color:#f4b55a">Owner test</span><small style="color:var(--muted)">${r.ts?aiFmtT(r.ts):''}</small></div>${Object.entries(f).filter(([k,v])=>v).map(([k,v])=>`<p style="margin-top:4px"><b style="color:#ddd">${esc(lab(k))}:</b> ${esc(v)}</p>`).join('')}</div>`};
+ return `<div style="margin-top:20px"><div class="eb">Owner test</div><div class="note">Your test submissions — never counted in real request numbers.</div>${t.map(card).join('')}<div class="acts" style="margin-top:8px"><button type="button" class="btn2" data-otclear="1">Clear owner tests</button></div></div>`}
 /* ---------- Feature 1: Morning brief (real data only) ---------- */
 function aiYDate(ms){return ms.length>1?ms[0].days[ms[0].days.length-2].date:null}
 function aiDayTotal(ms,ds){let t=0;if(ds)ms.forEach(m=>{const d=m.days.find(x=>x.date===ds);if(d)t+=d.gross});return r2(t)}
@@ -1325,8 +1355,14 @@ setInterval(tag,900);document.addEventListener('click',function(){setTimeout(tag
   link.appendChild(label);
   oswSyncLabel();
 
-  /* Preserve normal anchor navigation; this handler only refreshes the label at click time. */
-  link.addEventListener('click', oswSyncLabel);
+  /* Preserve normal anchor navigation; this handler refreshes the label at click time and
+   * marks this tab's session as the owner's (sessionStorage 'slc_owner_session' = '1',
+   * same-origin, per-tab) so the customer side knows Bori is testing — the owner-test
+   * channel. The flag lives only in the tab session; a fresh visit has none. */
+  link.addEventListener('click', function(){
+    try { window.sessionStorage.setItem('slc_owner_session', '1'); } catch (error) {}
+    oswSyncLabel();
+  });
   document.body.appendChild(link);
 
   if (window.MutationObserver) {
