@@ -129,6 +129,14 @@
  <div id="slcMore"></div><div id="slcValS"></div><div id="slcDocS"></div>
 </div>
 <div id="slcOv"><div class="bar"><button class="iconbtn" id="slcOvClose" type="button" style="color:#fff">‹ Back to admin</button><b id="slcOvT"></b></div><iframe id="slcOvF" title="Tool"></iframe></div>
+<style id="ai-feat-css">
+#slc .aibrief p{margin:7px 0;font-size:14px;line-height:1.5}
+#slc .aiqrow{display:flex;gap:8px;margin-top:10px}
+#slc .aiqrow input{flex:1;min-width:0}
+#slc .aians{margin-top:12px;font-size:14px;line-height:1.55}
+#slc .aians p{margin:5px 0}
+#slc .aisnapmsg{display:none;margin-top:8px}
+</style>
 <script>
 (function(){
 /* ==== MOCK FLAG ====================================================
@@ -488,6 +496,7 @@ return `<div class="eb">Daily command center</div><h2>Overview</h2>
 <div class="li"><span>Machines offline</span>${n(off,1)}</div><div class="li"><span>Open machine alerts</span>${n(al,1)}</div>
 <div class="li"><span>Pending refunds</span>${n(c.pend,1)}</div><div class="li"><span>Approved refunds not yet paid</span>${n(c.unpaid,1)}</div><div class="li"><span>New machine requests</span>${n(c.req)}</div><div class="li"><span>New support reports</span>${n(c.sup,1)}</div><div class="li"><span>New referrals</span>${n(c.ref)}</div><div class="li"><span>New messages</span>${n(c.msg)}</div>${attExtra()}
 <div class="acts"><button class="btn2" data-go="inbox" data-f="refunds">Open refunds</button><button class="btn2" data-go="inbox" data-f="all">Open inbox</button></div></div></div>
+${aiBriefCard()}${aiAskCard()}
 <div class="eb" style="margin-top:16px">Locations</div>
 <div class="locs">${DEVICES.map(([loc,ids])=>{const lm=mOfLoc(loc),t=sumMany(lm,1),w=sumMany(lm,7),on=lm.filter(m=>m.online).length,a=lm.reduce((x,m)=>x+m.alerts.length,0);return `<button type="button" class="loc" data-loc="${esc(loc)}"><div class="row"><h3>${esc(loc)}</h3><span style="color:var(--muted)">›</span></div><div class="kv"><div><small>Sales today</small><b data-loctoday="${r2(t.gross)}">${money(t.gross)}</b></div><div><small>7 days</small><b>${money(w.gross)}</b></div><div><small>Online</small><b class="${on<lm.length?'neg':'pos'}">${on} / ${lm.length}</b></div><div><small>Open alerts</small><b class="${a?'neg':'pos'}">${a}</b></div></div><p style="margin-top:6px"><span class="pill">Not yet confirmed</span></p></button>`}).join('')}</div>
 
@@ -668,9 +677,9 @@ ${promptDue?`<div class="card" style="border-color:rgba(244,181,90,.5)"><h3>Mile
 ${logs.map(l=>`<div class="li"><span>${esc(l.date)} · ${esc(l.mileage||'—')} mi ${l.service?'<span class="pill ok">service</span>':''}<br/><small style="color:var(--muted)">${esc(l.notes||'')}</small></span><span>${usd(l.cost)}</span></div>`).join('')}</div>`};
 function readImg(f,cb){if(!f){cb('','');return}if(f.type.indexOf('image')===0){const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const cv=document.createElement('canvas');const sc=Math.min(1,900/Math.max(im.width,im.height));cv.width=Math.round(im.width*sc);cv.height=Math.round(im.height*sc);cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);cb(cv.toDataURL('image/jpeg',0.82),f.name)};im.onerror=()=>cb('',f.name);im.src=r.result};r.readAsDataURL(f)}else{const r=new FileReader();r.onload=()=>cb(f.size<1500000?r.result:'',f.name);r.readAsDataURL(f)}}
 function recHtml(x){if(x.img&&x.img.indexOf('data:image')===0)return `<details style="margin-top:4px"><summary style="color:var(--blue);font-size:12px;min-height:32px;display:flex;align-items:center">Receipt</summary><img src="${x.img}" style="max-width:100%;border-radius:8px"/></details>`;if(x.img)return `<p style="font-size:12px;margin-top:2px"><a href="${x.img}" target="_blank" rel="noopener">Receipt (PDF)</a></p>`;if(x.rname)return `<p style="font-size:12px;color:var(--muted);margin-top:2px">receipt: ${esc(x.rname)}</p>`;return ''}
-function zelleSec(){const z=list('zelle');const so=z.filter(x=>x.dir!=='in').reduce((s,x)=>s+(+x.amount||0),0),si=z.filter(x=>x.dir==='in').reduce((s,x)=>s+(+x.amount||0),0);return `<div class="card"><div class="row"><h3>Zelle transfers</h3>${LOCAL}</div><p style="font-size:12px;color:var(--muted)">Every Zelle payment or transfer, with its receipt — the documentation your accountant needs.</p><div class="g2"><label class="f"><span>Direction</span><select id="zDir"><option value="out">Sent</option><option value="in">Received</option></select></label><label class="f"><span>Date</span><input id="zDate" type="date"/></label></div><label class="f"><span>To / from</span><input id="zName" placeholder="Name or business"/></label><div class="g2"><label class="f"><span>Amount</span><input id="zAmt" inputmode="decimal"/></label><label class="f"><span>Note (optional)</span><input id="zNote"/></label></div><label class="f"><span>Receipt (image or PDF)</span><input id="zFile" type="file" accept="image/*,application/pdf"/></label><div class="acts"><button class="slc-btn primary" id="zSave">Save transfer</button></div>${z.length?`<div class="row" style="margin-top:10px"><span class="pill">Sent ${usd(so)}</span><span class="pill">Received ${usd(si)}</span><span class="pill">Net ${usd(si-so)}</span></div>${z.map(x=>`<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)"><div class="row"><span><b>${x.dir==='in'?'Received':'Sent'}</b> · ${esc(x.name)} · ${usd(x.amount)}<br/><small style="color:var(--muted)">${esc(x.date||'')}${x.note?' · '+esc(x.note):''}</small></span><button class="btn2" data-zdel="${x.id}">Delete</button></div>${recHtml(x)}</div>`).join('')}`:'<p style="margin-top:8px">No Zelle transfers yet.</p>'}</div>`}
+function zelleSec(){const z=list('zelle');const so=z.filter(x=>x.dir!=='in').reduce((s,x)=>s+(+x.amount||0),0),si=z.filter(x=>x.dir==='in').reduce((s,x)=>s+(+x.amount||0),0);return `<div class="card"><div class="row"><h3>Zelle transfers</h3>${LOCAL}</div><p style="font-size:12px;color:var(--muted)">Every Zelle payment or transfer, with its receipt — the documentation your accountant needs.</p><div class="g2"><label class="f"><span>Direction</span><select id="zDir"><option value="out">Sent</option><option value="in">Received</option></select></label><label class="f"><span>Date</span><input id="zDate" type="date"/></label></div><label class="f"><span>To / from</span><input id="zName" placeholder="Name or business"/></label><div class="g2"><label class="f"><span>Amount</span><input id="zAmt" inputmode="decimal"/></label><label class="f"><span>Note (optional)</span><input id="zNote"/></label></div><label class="f"><span>Receipt (image or PDF)</span><input id="zFile" type="file" accept="image/*,application/pdf"/></label><div class="acts" style="margin-top:8px"><button type="button" class="slc-btn" id="zSnap"><span>📷</span> Snap receipt — AI fills it in</button>${NCs}</div><input id="zSnapF" type="file" accept="image/*" style="display:none"/><div class="note aisnapmsg" id="zSnapMsg" role="status"></div><div class="acts"><button class="slc-btn primary" id="zSave">Save transfer</button></div>${z.length?`<div class="row" style="margin-top:10px"><span class="pill">Sent ${usd(so)}</span><span class="pill">Received ${usd(si)}</span><span class="pill">Net ${usd(si-so)}</span></div>${z.map(x=>`<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)"><div class="row"><span><b>${x.dir==='in'?'Received':'Sent'}</b> · ${esc(x.name)} · ${usd(x.amount)}<br/><small style="color:var(--muted)">${esc(x.date||'')}${x.note?' · '+esc(x.note):''}</small></span><button class="btn2" data-zdel="${x.id}">Delete</button></div>${recHtml(x)}</div>`).join('')}`:'<p style="margin-top:8px">No Zelle transfers yet.</p>'}</div>`}
 function depSec(){const z=list('deposits');return `<div class="card"><div class="row"><h3>Cash deposits</h3>${LOCAL}</div><p style="font-size:12px;color:var(--muted)">Document each bank deposit: how much cash you had, what you exchanged (with a photo), and what you deposited (with the receipt).</p><div class="g2"><label class="f"><span>Date</span><input id="dDate" type="date"/></label><label class="f"><span>Total cash</span><input id="dTotal" inputmode="decimal"/></label></div><div class="g2"><label class="f"><span>Exchanged</span><input id="dEx" inputmode="decimal"/></label><label class="f"><span>Exchanged into</span><input id="dExN" placeholder="Quarters"/></label></div><label class="f"><span>Exchange photo</span><input id="dExF" type="file" accept="image/*,application/pdf"/></label><div class="g2"><label class="f"><span>Deposited</span><input id="dDep" inputmode="decimal" placeholder="Blank = total − exchanged"/></label><label class="f"><span>Note (optional)</span><input id="dNote"/></label></div><label class="f"><span>Deposit receipt</span><input id="dDepF" type="file" accept="image/*,application/pdf"/></label><div class="acts"><button class="slc-btn primary" id="dSave">Save deposit</button></div>${z.length?z.map(x=>`<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)"><div class="row"><span><b>${esc(x.date||'')}</b> · Total ${usd(x.total)}<br/><small style="color:var(--muted)">Exchanged ${usd(x.exchanged)}${x.exInto?' → '+esc(x.exInto):''} · Deposited <b>${usd(x.deposited)}</b>${x.note?' · '+esc(x.note):''}</small></span><button class="btn2" data-ddel="${x.id}">Delete</button></div>${x.exImg||x.exName?`<p style="font-size:12px;margin-top:4px;color:var(--muted)">Exchange:</p>${recHtml({img:x.exImg,rname:x.exName})}`:''}${x.depImg||x.depName?`<p style="font-size:12px;margin-top:4px;color:var(--muted)">Deposit receipt:</p>${recHtml({img:x.depImg,rname:x.depName})}`:''}</div>`).join(''):'<p style="margin-top:8px">No cash deposits yet.</p>'}</div>`}
-function purSec(){const z=list('purchases');return `<div class="card"><div class="row"><h3>Purchase receipts</h3>${LOCAL}</div><p style="font-size:12px;color:var(--muted)">Business credit card purchases outside your regular suppliers (Walmart, Amazon, and others). The receipt documents the card transaction for your accountant.</p><div class="g2"><label class="f"><span>Date</span><input id="pDate" type="date"/></label><label class="f"><span>Store</span><input id="pStore" placeholder="Walmart, Amazon…"/></label></div><div class="g2"><label class="f"><span>Amount</span><input id="pAmt" inputmode="decimal"/></label><label class="f"><span>What was bought (optional)</span><input id="pNote"/></label></div><label class="f"><span>Receipt (image or PDF)</span><input id="pFile" type="file" accept="image/*,application/pdf"/></label><div class="acts"><button class="slc-btn primary" id="pSave">Save receipt</button></div>${z.length?z.map(x=>`<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)"><div class="row"><span><b>${esc(x.store)}</b> · ${usd(x.amount)}<br/><small style="color:var(--muted)">${esc(x.date||'')}${x.note?' · '+esc(x.note):''}</small></span><button class="btn2" data-pdel="${x.id}">Delete</button></div>${recHtml(x)}</div>`).join(''):'<p style="margin-top:8px">No purchase receipts yet.</p>'}</div>`}
+function purSec(){const z=list('purchases');return `<div class="card"><div class="row"><h3>Purchase receipts</h3>${LOCAL}</div><p style="font-size:12px;color:var(--muted)">Business credit card purchases outside your regular suppliers (Walmart, Amazon, and others). The receipt documents the card transaction for your accountant.</p><div class="g2"><label class="f"><span>Date</span><input id="pDate" type="date"/></label><label class="f"><span>Store</span><input id="pStore" placeholder="Walmart, Amazon…"/></label></div><div class="g2"><label class="f"><span>Amount</span><input id="pAmt" inputmode="decimal"/></label><label class="f"><span>What was bought (optional)</span><input id="pNote"/></label></div><label class="f"><span>Receipt (image or PDF)</span><input id="pFile" type="file" accept="image/*,application/pdf"/></label><div class="acts" style="margin-top:8px"><button type="button" class="slc-btn" id="pSnap"><span>📷</span> Snap receipt — AI fills it in</button>${NCs}</div><input id="pSnapF" type="file" accept="image/*" style="display:none"/><div class="note aisnapmsg" id="pSnapMsg" role="status"></div><div class="acts"><button class="slc-btn primary" id="pSave">Save receipt</button></div>${z.length?z.map(x=>`<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.07)"><div class="row"><span><b>${esc(x.store)}</b> · ${usd(x.amount)}<br/><small style="color:var(--muted)">${esc(x.date||'')}${x.note?' · '+esc(x.note):''}</small></span><button class="btn2" data-pdel="${x.id}">Delete</button></div>${recHtml(x)}</div>`).join(''):'<p style="margin-top:8px">No purchase receipts yet.</p>'}</div>`}
 function ccCard(){return `<div class="card"><div class="row"><h3>Business credit card</h3><span class="pill pending">Not connected</span></div><p style="font-size:12px;color:var(--muted)">Capital One. Live balance, amount due, and due date appear here once the card is connected (via Plaid). Nothing here is estimated or filled in before then.</p><div class="g2"><p>Current balance<br/><b>—</b></p><p>Amount due<br/><b>—</b></p><p>Minimum payment<br/><b>—</b></p><p>Due date<br/><b>—</b></p><p>Credit limit<br/><b>—</b></p><p>Last payment<br/><b>—</b></p><p style="grid-column:1/-1">Credit used<span style="display:block;height:10px;background:rgba(255,255,255,.08);border-radius:6px;margin-top:4px"><span style="display:block;height:100%;width:0%;background:var(--green);border-radius:6px"></span></span><small style="color:var(--muted)">—% of limit used · fills in when the card is connected</small></p></div></div>`}
 function locNotes(loc){return (LS('locnotes')||{})[loc]||{}}
 function locNoteCard(loc){const x=locNotes(loc);const v=s=>esc(x[s]||'');return `<div class="card"><div class="row"><h3>Location notes</h3>${LOCAL}</div><p style="font-size:12px;color:var(--muted)">Access details for this location — gate codes, contacts, hours. Entered by you; shown here and on each machine at this location.</p><div class="g2"><label class="f"><span>Contact person</span><input id="lnContact" value="${v('contact')}"/></label><label class="f"><span>Phone</span><input id="lnPhone" value="${v('phone')}"/></label></div><div class="g2"><label class="f"><span>Access hours</span><input id="lnAccess" value="${v('access')}" placeholder="Mon–Fri 7a–6p"/></label><label class="f"><span>Gate / entry code</span><input id="lnGate" value="${v('gate')}"/></label></div><label class="f"><span>Notes</span><input id="lnNotes" value="${v('notes')}" placeholder="Where the machines sit, parking, anything the crew needs"/></label><div class="acts"><button class="slc-btn primary" id="lnSave">Save notes</button></div></div>`}
@@ -687,7 +696,7 @@ const KINDS=[['all','All'],['request','Requests'],['problem','Problems'],['refer
 const STAT=['new','contacted','reviewed','resolved'];
 const wide=()=>matchMedia('(min-width:600px)').matches;let ibSel=null;
 const FEM={new:'nueva',contacted:'contactada',reviewed:'revisada',resolved:'resuelta'};function stLbl(x,s,cap){let t=ES()&&x.kind==='request'?FEM[s]:s;if(ES()&&x.kind!=='request')t={new:'nuevo',contacted:'contactado',reviewed:'revisado',resolved:'resuelto'}[s]||s;return cap?t[0].toUpperCase()+t.slice(1):t}
-function ibCard(x){return `<div class="card"><div class="row"><span class="pill local">${esc(x.kind)}</span>${x.kind==='problem'&&x.status!=='resolved'&&(Date.now()-new Date(x.created).getTime())>48*36e5?`<span class="pill" style="color:#f4b55a;border-color:#f4b55a">Open ${Math.floor((Date.now()-new Date(x.created).getTime())/864e5)}d</span>`:' '}<small style="color:var(--muted)">${when(x.created)}</small></div>${Object.entries(x.fields||{}).filter(([k,v])=>v).map(([k,v])=>`<p style="margin-top:4px"><b style="color:#ddd">${esc(k)}:</b> ${esc(v)}</p>`).join('')}<div class="chips">${STAT.map(s=>`<button type="button" class="chip ${x.status===s?'on':''}" data-st="${s}" data-id="${x.id}">${stLbl(x,s,1)}</button>`).join('')}</div></div>`}
+function ibCard(x){return `<div class="card"><div class="row"><span class="pill local">${esc(x.kind)}</span>${x.kind==='problem'&&x.status!=='resolved'&&(Date.now()-new Date(x.created).getTime())>48*36e5?`<span class="pill" style="color:#f4b55a;border-color:#f4b55a">Open ${Math.floor((Date.now()-new Date(x.created).getTime())/864e5)}d</span>`:' '}<small style="color:var(--muted)">${when(x.created)}</small></div>${Object.entries(x.fields||{}).filter(([k,v])=>v).map(([k,v])=>`<p style="margin-top:4px"><b style="color:#ddd">${esc(k)}:</b> ${esc(v)}</p>`).join('')}<div class="chips">${STAT.map(s=>`<button type="button" class="chip ${x.status===s?'on':''}" data-st="${s}" data-id="${x.id}">${stLbl(x,s,1)}</button>`).join('')}</div><div class="acts" style="margin-top:10px"><button type="button" class="slc-btn" data-aidraft="${x.id}"><span>✨</span> Draft reply with AI</button>${NCs}</div><div data-aipanel="${x.id}" style="display:none"><div class="note">AI — Not connected. Drafts arrive when the AI connects at launch.</div><label class="f"><span>Your reply</span><textarea data-aitext="${x.id}" rows="4" placeholder="Write your reply…"></textarea></label></div></div>`}
 function ibSplit(sh){const sel=sh.find(x=>x.id===ibSel)||sh[0];const t=x=>{const f=x.fields||{};return f['Business name']||f['Name']||f['Your name']||f['Issue']||Object.values(f)[0]||x.kind};return `<div class="ibx"><div class="ibl">${sh.map(x=>`<button type="button" class="${x===sel?'on':''}" data-isel="${x.id}"><span class="pill local">${esc(x.kind)}</span> <small>${esc(stLbl(x,x.status))} · ${when(x.created)}</small><br/><b>${esc(String(t(x)).slice(0,60))}</b></button>`).join('')}</div><div>${ibCard(sel)}</div></div>`}
 V.inbox=()=>{const it=list('inbox');
 const cnt=k=>k==='all'?it.length:k==='refunds'?list('refunds').length:it.filter(x=>x.kind===k).length;
@@ -735,7 +744,7 @@ V.documents=()=>{sd();const d=list('docs');const ins=d.filter(x=>x.cat==='insura
 <div class="dtiles">${[['all','All','▭','#ffb454']].concat(DOCG).map(([k,l,ic,col])=>`<button type="button" class="dtile${docF===k?' on':''}" aria-pressed="${docF===k}" data-docf="${k}"><span class="dic" style="color:${col}">${ic}</span><span class="dt">${tr(l)}</span><b class="dc">${cnt(k)}</b></button>`).join('')}</div>
 <div id="docList">${docList()}</div>${zelleSec()}${depSec()}${purSec()}`};
 function docSheet(h){const s=$('#slcDocS');s.innerHTML=`<div class="sheet" role="dialog" aria-modal="true">${h}</div>`;s.classList.add('open');s.onclick=e=>{if(e.target===s||e.target.closest('[data-docclose]'))s.classList.remove('open')}}
-function docAddSheet(pre){let sel=-1;docSheet('<div class="row"><h3>'+tr('Add document')+'</h3><button class="btn2" type="button" data-docclose="1">'+tr('Close')+'</button></div>'+LOCAL+'<span class="flab">'+tr('What is it?')+'</span><div class="dtypes">'+DOCTYPES.map(function(x,i){return '<button type="button" class="dtype" data-dtype="'+i+'">'+tr(x[0])+'</button>'}).join('')+'</div><label class="f"><span>'+tr('Title')+'</span><input id="dcT" placeholder="'+tr('Title fills in automatically \u2014 edit it if you want.')+'"/></label><span class="flab">'+tr('Photo or file')+'</span><label class="dup" for="dcF"><span class="dup-ic">\u{1F4F7}</span><span id="dcFn">'+tr('Take a photo or pick a file')+'</span></label><input id="dcF" type="file" accept="image/*,.pdf" style="position:absolute;opacity:0;width:1px;height:1px"/><img id="dcPrev" class="dprev" alt="" style="display:none"/><label class="f"><span>'+tr('Expiry date (optional)')+'</span><input id="dcE" type="date"/></label><p class="slc-err" id="dcErr"></p><div class="acts"><button class="slc-btn primary" type="button" id="dcGo">'+tr('Add')+'</button></div>');
+function docAddSheet(pre){let sel=-1;docSheet('<div class="row"><h3>'+tr('Add document')+'</h3><button class="btn2" type="button" data-docclose="1">'+tr('Close')+'</button></div>'+LOCAL+'<div class="acts" style="margin:8px 0"><button class="slc-btn" type="button" data-aiauto="1"><span>✨</span> '+tr('Auto-file with AI')+'</button></div><div class="note" id="dcAiNote" style="display:none">'+tr('AI — Not connected. Automatic filing arrives when the AI connects at launch; for now, pick the type below and add the document as usual.')+'</div><span class="flab">'+tr('What is it?')+'</span><div class="dtypes">'+DOCTYPES.map(function(x,i){return '<button type="button" class="dtype" data-dtype="'+i+'">'+tr(x[0])+'</button>'}).join('')+'</div><label class="f"><span>'+tr('Title')+'</span><input id="dcT" placeholder="'+tr('Title fills in automatically \u2014 edit it if you want.')+'"/></label><span class="flab">'+tr('Photo or file')+'</span><label class="dup" for="dcF"><span class="dup-ic">\u{1F4F7}</span><span id="dcFn">'+tr('Take a photo or pick a file')+'</span></label><input id="dcF" type="file" accept="image/*,.pdf" style="position:absolute;opacity:0;width:1px;height:1px"/><img id="dcPrev" class="dprev" alt="" style="display:none"/><label class="f"><span>'+tr('Expiry date (optional)')+'</span><input id="dcE" type="date"/></label><p class="slc-err" id="dcErr"></p><div class="acts"><button class="slc-btn primary" type="button" id="dcGo">'+tr('Add')+'</button></div>');
 var chips=[].slice.call(document.querySelectorAll('[data-dtype]'));
 function pick(i){sel=i;chips.forEach(function(c,j){c.classList.toggle('on',j===i)});var x=DOCTYPES[i];if(x[2])$('#dcT').value=x[2]+(x[3]?' '+new Date().getFullYear():'')}
 chips.forEach(function(c,i){c.onclick=function(){pick(i)}});
@@ -770,6 +779,7 @@ function go(t){if(t==='finance'){t=arguments[1]==='bills'?'bills':'reports'}tab=
 function val(id){const e=document.getElementById(id);return e?e.value.trim():''}
 function fname(id){const e=document.getElementById(id);return e&&e.files&&e.files[0]?e.files[0].name:''}
 function bindTab(){const tab=cur;
+ if(tab==='overview'){const ag=$('#askGo');if(ag)ag.onclick=()=>aiAskSubmit();const aq=$('#askQ');if(aq){aq.value=askState.q||'';aq.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();aiAskSubmit()}})}document.querySelectorAll('[data-askq]').forEach(b=>b.onclick=()=>{askState.q=b.getAttribute('data-askq');askState.res=aiAsk(askState.q);render()})}
 
  if(tab==='calendar'&&$('#eSave'))$('#eSave').onclick=()=>{if(!val('eT'))return;push('events',{date:calSel,title:val('eT'),time:val('eTm'),details:val('eD')});render()};
  if(tab==='vehicle'){$('#vSave').onclick=()=>{const v=LS('vehicle')||{};const mi=val('vMi');if(mi&&mi!==v.mileage)v.mileageAt=new Date().toISOString();Object.assign(v,{name:val('vN'),mileage:mi});const f=fname('vIns');if(f)v.ins=f;SV('vehicle',v);render()};
@@ -863,6 +873,156 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&valOpen){openVal(fa
 function langBtn(){const b=document.getElementById('slcLang');if(b)b.textContent=ES()?'EN':'ES'}
 document.getElementById('slcLang').onclick=()=>{const es=!ES();const r=document.getElementById(es?'lang-es':'lang-en');if(r){r.checked=true;r.dispatchEvent(new Event('change',{bubbles:true}))}else{try{localStorage.setItem('slc_lang',es?'es':'en')}catch(e){}xlAll()}document.documentElement.lang=es?'es':'en';langBtn();render()};
 document.querySelectorAll('input[name=lang]').forEach(r=>r.addEventListener('change',langBtn));langBtn();document.documentElement.lang=ES()?'es':'en';
+/* ==== AI FEATURES — Phase NOW (spec: ~/workspace/your_files/firesnacks-ai-features-spec.md; Bori approved Oct 14, 2026) ====
+ * Guardrails (binding): the AI never invents a business number — every figure below is computed
+ * from this app's own data (SD machine day series via sumDays/sumMany, the local ledgers via
+ * list(), counts()). Nothing auto-sends or auto-saves. Full EN/ES parity.
+ *
+ * SLC_AI is the ONE client stub for every AI feature. Activation contract (at launch, when the
+ * back end stands up): call(task, payload) POSTs JSON {task:task, payload:payload} to /api/ai —
+ * the Gemini key lives ONLY as a back-end secret, never in this app — and resolves with the
+ * endpoint's parsed JSON. Until then connected:false and call() resolves {ok:false,
+ * connected:false}; the AI-powered flows show their honest "AI — Not connected" state.
+ * NO network calls happen today. */
+window.SLC_AI={connected:false,call:function(task,payload){return Promise.resolve({ok:false,connected:false})}};
+Object.assign(SLC_ES,{
+"Your morning brief":"Tu resumen de la mañana",
+"From your data":"De tus datos",
+"Ask your data":"Pregunta a tus datos",
+"Ask about sales, Zelle, bills…":"Pregunta sobre ventas, Zelle, facturas…",
+"Ask":"Preguntar",
+"How much did SeaVee Main Snack make in the last 7 days?":"¿Cuánto hizo SeaVee Main Snack en los últimos 7 días?",
+"How much did Seavee Headquarters make in the last 30 days?":"¿Cuánto hizo Seavee Headquarters en los últimos 30 días?",
+"What Zelle payments went out this week?":"¿Qué pagos de Zelle salieron esta semana?",
+"What bills are due this week?":"¿Qué facturas vencen esta semana?",
+"Snap receipt — AI fills it in":"Foto del recibo — la IA lo rellena",
+"AI — Not connected. Automatic reading arrives when the AI connects at launch; for now the photo is attached and you can fill the details below as usual.":"IA — Sin conexión. La lectura automática llega cuando la IA se conecte en el lanzamiento; por ahora la foto quedó adjunta y puedes completar los datos abajo como siempre.",
+"AI — Not connected. Automatic reading arrives when the AI connects at launch; for now, add the photo with the Receipt field below and fill the details as usual.":"IA — Sin conexión. La lectura automática llega cuando la IA se conecte en el lanzamiento; por ahora, agrega la foto con el campo de recibo de abajo y completa los datos como siempre.",
+"Auto-file with AI":"Archivo automático con IA",
+"AI — Not connected. Automatic filing arrives when the AI connects at launch; for now, pick the type below and add the document as usual.":"IA — Sin conexión. El archivo automático llega cuando la IA se conecte en el lanzamiento; por ahora, elige el tipo abajo y agrega el documento como siempre.",
+"Draft reply with AI":"Redactar respuesta con IA",
+"AI — Not connected. Drafts arrive when the AI connects at launch.":"IA — Sin conexión. Los borradores llegan cuando la IA se conecte en el lanzamiento.",
+"Your reply":"Tu respuesta",
+"Write your reply…":"Escribe tu respuesta…"
+});
+/* ---------- Feature 1: Morning brief (real data only) ---------- */
+function aiYDate(ms){return ms.length>1?ms[0].days[ms[0].days.length-2].date:null}
+function aiDayTotal(ms,ds){let t=0;if(ds)ms.forEach(m=>{const d=m.days.find(x=>x.date===ds);if(d)t+=d.gross});return r2(t)}
+function aiBriefCard(){const S=sd(),ms=S.machines,c=counts(),es=ES();
+ const y=aiDayTotal(ms,aiYDate(ms)),w=sumMany(ms,7).gross;
+ let top=null,topV=-1;ms.forEach(m=>{const v=sumDays(m,7).gross;if(v>topV){topV=v;top=m}});
+ const al=ms.reduce((a,m)=>a+m.alerts.length,0);
+ const L=[
+  es?`Ayer: <b>${money(y)}</b> en ${ms.length} máquinas.`:`Yesterday: <b>${money(y)}</b> across ${ms.length} machines.`,
+  es?`Últimos 7 días: <b>${money(w)}</b>.`:`Last 7 days: <b>${money(w)}</b>.`,
+  top?(es?`Máquina líder (7 días): <b>${esc(top.id)}</b> — <b>${money(topV)}</b>.`:`Top machine (7 days): <b>${esc(top.id)}</b> — <b>${money(topV)}</b>.`):'',
+  al?(es?`Alertas abiertas: <b>${al}</b>.`:`Alerts open: <b>${al}</b>.`):(es?'Sin alertas abiertas.':'No open alerts.'),
+  c.pend?(es?`Reembolsos en espera: <b>${c.pend}</b>.`:`Refunds waiting: <b>${c.pend}</b>.`):(es?'Sin reembolsos en espera.':'No refunds waiting.'),
+  c.newi?(es?`Mensajes nuevos: <b>${c.newi}</b>.`:`New messages: <b>${c.newi}</b>.`):(es?'Sin mensajes nuevos.':'No new messages.')
+ ].filter(Boolean);
+ return `<div class="card"><div class="row"><h3>Your morning brief</h3><span class="pill local">From your data</span></div><div class="aibrief">${L.map(l=>`<p>${l}</p>`).join('')}</div></div>`}
+/* ---------- Feature 2: Ask your data (local lookups over real records) ---------- */
+const AI_EXAMPLES=['How much did SeaVee Main Snack make in the last 7 days?','How much did Seavee Headquarters make in the last 30 days?','What Zelle payments went out this week?','What bills are due this week?'];
+let askState={q:'',res:null};
+function aiNorm(s){return ' '+String(s||'').toLowerCase().replace(/[^a-z0-9áéíóúñü ]+/gi,' ').replace(/\s+/g,' ').trim()+' '}
+function aiPerLabel(k){const es=ES();return k==='t'?(es?'hoy':'today'):k==='y'?(es?'ayer':'yesterday'):k==='30'?(es?'en los últimos 30 días':'in the last 30 days'):(es?'en los últimos 7 días':'in the last 7 days')}
+function aiPeriod(q){
+ if(/ next |forecast|predict|future|will |próxim|viene|esperad|predec/.test(q))return{bad:1};
+ if(/ yesterday | ayer /.test(q))return{k:'y'};
+ if(/ today | hoy /.test(q))return{k:'t'};
+ if(/ 30 days | 30 días | 30 dias |this month|este mes/.test(q))return{k:'30'};
+ if(/ 7 days | 7 días | 7 dias |this week|esta semana|last week|semana pasada/.test(q))return{k:'7'};
+ return{k:'7'}}
+function aiAddD(ds,n){const d=new Date(ds+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)}
+function aiWindow(per){const ms=sd().machines;const last=ms[0].days[ms[0].days.length-1].date;const yd=aiYDate(ms);
+ if(per.k==='t')return{from:last,to:last};
+ if(per.k==='y')return{from:yd,to:yd};
+ if(per.k==='30')return{from:aiAddD(last,-29),to:last};
+ return{from:aiAddD(last,-6),to:last}}
+function aiSalesFor(ms,per){
+ if(per.k==='y')return aiDayTotal(ms,aiYDate(sd().machines));
+ if(per.k==='30')return sumMany(ms,30).gross;
+ if(per.k==='t')return sumMany(ms,1).gross;
+ return sumMany(ms,7).gross}
+function aiEntity(q){const qt=new Set(q.trim().split(' ').filter(Boolean));
+ const toks=name=>aiNorm(name).trim().split(' ').filter(w=>w.length>=3||/^\d+$/.test(w));
+ const score=name=>{const nm=aiNorm(name).trim();let sc=toks(name).reduce((a,w)=>a+(qt.has(w)?1:0),0);if(nm&&q.indexOf(' '+nm+' ')>=0)sc+=3;return sc};
+ const ms=sd().machines.map(m=>({m,sc:score(m.id)})).sort((a,b)=>b.sc-a.sc);
+ const ls=DEVICES.map(([loc])=>({loc,sc:score(loc)})).sort((a,b)=>b.sc-a.sc);
+ const bm=ms[0],bl=ls[0],bsc=bm?bm.sc:0,lsc=bl?bl.sc:0;
+ if(bsc===0&&lsc===0)return{kind:'all'};
+ const tied=ms.filter(x=>x.sc===bsc&&bsc>0);
+ if(bsc>lsc){if(tied.length===1)return{kind:'machine',m:bm.m};
+  const locs=[...new Set(tied.map(x=>x.m.loc))];
+  if(locs.length===1){const li=ls.find(x=>x.loc===locs[0]);if(li&&li.sc>=bsc)return{kind:'loc',loc:locs[0]}}
+  return{kind:'amb',names:tied.map(x=>x.m.id)}}
+ if(lsc>bsc)return{kind:'loc',loc:bl.loc};
+ if(tied.length===1)return{kind:'machine',m:bm.m};
+ const locs=[...new Set(tied.map(x=>x.m.loc))];
+ if(locs.length===1&&locs[0]===bl.loc)return{kind:'loc',loc:bl.loc};
+ return{kind:'amb',names:tied.map(x=>x.m.id)}}
+function aiZelle(q){const per=aiPeriod(q);if(per.bad)return{type:'cant'};
+ const out=/sent|send|out|paid|salier|enviad|envié|enviados|pagos de/.test(q),inc=/receiv|came in|recibid|entraron|recib/.test(q);
+ const dirs=(out&&!inc)?['out']:(inc&&!out)?['in']:['out','in'];
+ const win=aiWindow(per);
+ const rows=list('zelle').filter(x=>x.date>=win.from&&x.date<=win.to).filter(x=>dirs.indexOf(x.dir==='in'?'in':'out')>=0).slice().sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+ return{type:'zelle',per,dirs,rows}}
+function aiEbDate(x){const m=String(x.dueText||'').match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})/i);if(!m)return null;
+ const mo={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11}[m[1].slice(0,3).toLowerCase()];
+ const yr=+(aiWindow({k:'t'}).to.slice(0,4));const d=new Date(Date.UTC(yr,mo,+m[2]));return d.toISOString().slice(0,10)}
+function aiBills(q){const week=/week|semana/.test(q);const win=aiWindow({k:'t'}),today=win.to,wk=aiAddD(today,7);
+ const paid=new Set(list('payments').map(p=>p.bill));
+ const rows=list('bills').filter(b=>!paid.has(b.id)).filter(b=>!week||(b.due&&b.due<=wk)).slice().sort((a,b)=>String(a.due).localeCompare(String(b.due)));
+ const eb=ebList().filter(x=>{if(!week)return true;const d=aiEbDate(x);return d&&d<=wk});
+ return{type:'bills',week,today,rows,eb}}
+function aiAsk(qRaw){const q=aiNorm(qRaw);
+ if(/zelle/.test(q))return aiZelle(q);
+ if(/bill|factura/.test(q))return aiBills(q);
+ const per=aiPeriod(q);if(per.bad)return{type:'cant'};
+ const ent=aiEntity(q);
+ if(ent.kind==='amb')return{type:'amb',names:ent.names};
+ if(ent.kind==='machine')return{type:'sales',who:ent.m.id,v:aiSalesFor([ent.m],per),per};
+ if(ent.kind==='loc')return{type:'sales',who:ent.loc,v:aiSalesFor(mOfLoc(ent.loc),per),per};
+ if(!/make|made|earn|sales|sold|revenue|money|much|hizo|ganó|gano|vend|cuánt|cuant|total|ingres/.test(q))return{type:'cant'};
+ return{type:'sales',who:null,v:aiSalesFor(sd().machines,per),per}}
+function aiFmtD(d){try{return new Date(String(d)+'T00:00').toLocaleDateString(ES()?'es-US':'en-US',{month:'short',day:'numeric',year:'numeric'})}catch(e){return d||''}}
+function aiAskFormat(r){const es=ES();if(!r)return'';
+ if(r.type==='cant')return `<div class="aians"><p>${es?'Todavía no puedo responder eso — las respuestas completas llegan cuando la IA se conecte en el lanzamiento.':'I can\'t answer that yet — fuller answers arrive when the AI connects at launch.'}</p><p style="color:var(--muted)">${es?'Prueba una de las preguntas de ejemplo de arriba.':'Try one of the example questions above.'}</p></div>`;
+ if(r.type==='amb')return `<div class="aians"><p>${es?`Ese nombre coincide con más de una máquina: ${r.names.map(esc).join(', ')}. Pregunta con el nombre completo.`:`That name matches more than one machine: ${r.names.map(esc).join(', ')}. Ask with the full name.`}</p></div>`;
+ if(r.type==='sales'){const lab=aiPerLabel(r.per.k);
+  return `<div class="aians"><p>${r.who?(es?`${esc(r.who)} hizo <b>${money(r.v)}</b> ${lab}.`:`${esc(r.who)} made <b>${money(r.v)}</b> ${lab}.`):(es?`Todas las máquinas hicieron <b>${money(r.v)}</b> ${lab}.`:`All machines made <b>${money(r.v)}</b> ${lab}.`)}</p></div>`}
+ if(r.type==='zelle'){const lab=aiPerLabel(r.per.k);let h='<div class="aians">';
+  r.dirs.forEach(d=>{const rows=r.rows.filter(x=>(x.dir==='in'?'in':'out')===d);const t=r2(rows.reduce((s,x)=>s+(+x.amount||0),0));
+   const wOut=es?'enviados':'sent',wIn=es?'recibidos':'received';
+   h+=`<p><b>${es?'Zelle':'Zelle'} ${d==='in'?wIn:wOut} ${lab}:</b></p>`;
+   if(!rows.length)h+=`<p style="color:var(--muted)">${es?`Sin pagos de Zelle ${d==='in'?wIn:wOut} ${lab}.`:`No Zelle payments ${d==='in'?wIn:wOut} ${lab}.`}</p>`;
+   rows.forEach(x=>{h+=`<p>• ${esc(x.name||'')} — <b>${usd(x.amount)}</b> · ${aiFmtD(x.date)}</p>`});
+   if(rows.length)h+=`<p>${es?'Total':'Total'} ${d==='in'?wIn:wOut}: <b>${money(t)}</b> · ${rows.length} ${es?'pago(s)':'payment(s)'}</p>`});
+  return h+'</div>'}
+ if(r.type==='bills'){let h='<div class="aians">';
+  h+=`<p><b>${r.week?(es?'Facturas que vencen esta semana (incluidas las vencidas):':'Bills due this week (including overdue):'):(es?'Facturas por vencer (sin pagar):':'Bills due (unpaid):')}</b></p>`;
+  let tot=0,known=0;
+  r.rows.forEach(b=>{const od=b.due&&b.due<r.today;tot+=(+b.amount||0);known++;h+=`<p>• ${esc(b.vendor||'')} — <b>${usd(b.amount)}</b> · ${es?'vence':'due'} ${aiFmtD(b.due)}${od?(es?' (vencida)':' (overdue)'):''}</p>`});
+  r.eb.forEach(x=>{if(x.amount!=null){tot+=x.amount;known++}h+=`<p>• ${esc(x.vendor||'')} — <b>${x.amount==null?(es?'Importe pendiente':'Amount pending'):usd(x.amount)}</b> · ${esc(x.dueText||'')}</p>`});
+  if(!r.rows.length&&!r.eb.length)h+=`<p style="color:var(--muted)">${r.week?(es?'No hay facturas que venzan esta semana.':'No bills due this week.'):(es?'No hay facturas por vencer.':'No bills due.')}</p>`;
+  else if(known)h+=`<p>${es?'Total de importes conocidos':'Total of known amounts'}: <b>${money(r2(tot))}</b></p>`;
+  return h+'</div>'}
+ return''}
+function aiAskCard(){return `<div class="card"><div class="row"><h3>Ask your data</h3></div><div class="aiqrow"><input id="askQ" placeholder="Ask about sales, Zelle, bills…" autocomplete="off"/><button type="button" class="slc-btn primary" id="askGo">Ask</button></div><div class="chips" style="margin-top:10px">${AI_EXAMPLES.map(q=>`<button type="button" class="chip" data-askq="${esc(q)}">${esc(q)}</button>`).join('')}</div><div id="askAns">${aiAskFormat(askState.res)}</div></div>`}
+function aiAskSubmit(){const v=val('askQ');if(!v)return;askState.q=v;askState.res=aiAsk(v);render()}
+/* ---------- Feature 3: receipt snap + auto-file + inbox draft entry points (honest not-connected states) ---------- */
+const AI_SNAP_MSG='AI — Not connected. Automatic reading arrives when the AI connects at launch; for now the photo is attached and you can fill the details below as usual.';
+const AI_SNAP_MSG2='AI — Not connected. Automatic reading arrives when the AI connects at launch; for now, add the photo with the Receipt field below and fill the details as usual.';
+function aiSnapDone(inp){const f=inp.files&&inp.files[0];if(!f)return;const pre=inp.id.charAt(0);
+ const tgt=document.getElementById(pre+'File'),msg=document.getElementById(pre+'SnapMsg');let ok=false;
+ try{const dt=new DataTransfer();dt.items.add(f);if(tgt){tgt.files=dt.files;ok=!!(tgt.files&&tgt.files.length)}}catch(e){}
+ if(msg){msg.textContent=tr(ok?AI_SNAP_MSG:AI_SNAP_MSG2);msg.style.display='block'}}
+document.addEventListener('click',function(e){const t=e.target;if(!t||!t.closest)return;
+ const sn=t.closest('#pSnap,#zSnap');if(sn){const f=document.getElementById(sn.id+'F');if(f)f.click();return}
+ if(t.closest('[data-aiauto]')){const n=document.getElementById('dcAiNote');if(n)n.style.display='block';return}
+ const dr=t.closest('[data-aidraft]');if(dr){const p=document.querySelector('[data-aipanel="'+dr.getAttribute('data-aidraft')+'"]');if(p)p.style.display=(p.style.display==='none'||!p.style.display)?'block':'none'}});
+document.addEventListener('change',function(e){if(e.target&&(e.target.id==='pSnapF'||e.target.id==='zSnapF'))aiSnapDone(e.target)});
+
 window.SLC={go,open,signOut,MOCK,REFUND_CAP};
 })();
 
