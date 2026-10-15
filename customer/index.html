@@ -1141,7 +1141,7 @@ document.addEventListener('click',function(e){var a=e.target.closest&&e.target.c
    - Controls live in localStorage 'slc_ai_controls_v1':
      {cap:20, restHours:12, features:{<featureId>:{on:true}}} — defaults apply when
      absent; written from the admin kill-switch panel. Customer feature ids:
-     'scanner', 'compare_scans', 'placement_assistant'.
+     'scanner', 'compare_scans', 'placement_assistant', 'spot_check'.
    - Usage ledger lives in localStorage 'slc_ai_usage_v1':
      {count:0, perFeature:{}, restUntil:0, windowStart:<ts>}.
    - call(task) resolves exactly one of:
@@ -1153,7 +1153,17 @@ document.addEventListener('click',function(e){var a=e.target.closest&&e.target.c
      An expired rest auto-resets the ledger before the use is counted.
    - Scope lock: "I can only help with FireSnacks machines, products, and
      placements." / "Solo puedo ayudarte con máquinas, productos y ubicaciones
-     de FireSnacks." */
+     de FireSnacks."
+   - OWNER MODE (owner-testing design, identical contract in the admin app):
+     sessionStorage 'slc_owner_session' === '1' (set by the admin side's
+     switcher when Bori jumps over) or window.SLC_OWNER === true means Bori
+     is testing on this tab. In owner mode, call() skips the usage cap
+     entirely — no count increment, never capped/resting — and returns the
+     normal Not-connected result; feature off-switches still apply. Owner-mode
+     submissions bypass the phone-verification gate into the owner-test
+     channel: localStorage 'slc_owner_test_submissions_v1', a list of
+     {kind, fields, owner_test:true, ts} that the admin side reads directly
+     and shows tagged "Owner test" — never counted as a real submission. */
 window.SLC_AI = {
   connected: false,
   CONTROLS_KEY: 'slc_ai_controls_v1',
@@ -1174,6 +1184,12 @@ window.SLC_AI = {
     var f = window.SLC_AI.controls().features[id];
     return !(f && f.on === false);
   },
+  ownerMode: function () {
+    /* Owner-testing session: per tab only — set by the admin side's switcher
+       (sessionStorage 'slc_owner_session') or by the production session gate. */
+    if (window.SLC_OWNER === true) return true;
+    try { return sessionStorage.getItem('slc_owner_session') === '1'; } catch (e) { return false; }
+  },
   usage: function () {
     var u = null;
     try { u = JSON.parse(localStorage.getItem(window.SLC_AI.USAGE_KEY) || 'null'); } catch (e) { u = null; }
@@ -1193,12 +1209,16 @@ window.SLC_AI = {
     if (s.indexOf('compare') === 0) return 'compare_scans';
     if (s.indexOf('scanner') === 0) return 'scanner';
     if (s.indexOf('placement') === 0) return 'placement_assistant';
+    if (s.indexOf('spot') === 0) return 'spot_check';
     return s;
   },
   call: function (task, payload) {
     var S = window.SLC_AI;
     var feature = S.featureForTask(task);
     if (!S.featureOn(feature)) return Promise.resolve({ ok: false, off: true });
+    /* Owner mode: Bori testing — the cap is skipped entirely (no count, never
+       capped/resting); off-switches above still apply. */
+    if (S.ownerMode()) return Promise.resolve({ ok: false, connected: false });
     var ctl = S.controls();
     var u = S.usage();
     var now = Date.now();
@@ -1226,7 +1246,12 @@ window.SLC_AI = {
    submission may ever leave this phone (to the admin Inbox). Until then
    connected is false, send()/confirm() make NO network request and resolve
    {ok:false, connected:false}, and the UI keeps the submission on this phone
-   only, as 'pending_verification' in 'slc_pending_submissions_v1'. */
+   only, as 'pending_verification' in 'slc_pending_submissions_v1'.
+   OWNER BYPASS: in owner mode (SLC_AI.ownerMode()) the gate offers an
+   "Owner test — skip verification" action instead; the submission is written
+   to 'slc_owner_test_submissions_v1' as {kind, fields, owner_test:true, ts}
+   — the channel the admin side reads and tags "Owner test". It never enters
+   the pending store and is never counted as a real submission. */
 window.SLC_VERIFY = {
   connected: false,
   send: function (phone) { return Promise.resolve({ ok: false, connected: false }); },
@@ -1526,7 +1551,11 @@ window.SLC_VERIFY = {
    written ONLY to 'slc_pending_submissions_v1' with status
    'pending_verification'. The admin-read stores ('slc_inbox', 'slc_products',
    'slc_refunds', ...) are never written by this code. Scope lock: the assistant
-   can only help with FireSnacks machines, products, and placements. */
+   can only help with FireSnacks machines, products, and placements.
+   OWNER MODE (Bori testing, sessionStorage 'slc_owner_session'): the cap is
+   skipped and the gate gains an owner-test skip that files the submission to
+   'slc_owner_test_submissions_v1' tagged owner_test — never the pending store,
+   never a real submission. Signed-out behavior is unchanged. */
 (function () {
   var app = document.querySelector('.app');
   if (!app) return;
@@ -1551,6 +1580,16 @@ window.SLC_VERIFY = {
     var a = loadPending();
     a.unshift(rec);
     try { localStorage.setItem(PENDING_KEY, JSON.stringify(a)); } catch (e) { /* storage blocked */ }
+  }
+
+  /* ---------- owner-test channel: Bori's own test submissions, tagged, never real ---------- */
+  var OWNER_TEST_KEY = 'slc_owner_test_submissions_v1';
+  function ownerMode() { return !!(AI && typeof AI.ownerMode === 'function' && AI.ownerMode()); }
+  function saveOwnerTest(rec) {
+    var a = [];
+    try { var raw = JSON.parse(localStorage.getItem(OWNER_TEST_KEY) || '[]'); if (Object.prototype.toString.call(raw) === '[object Array]') a = raw; } catch (e) { a = []; }
+    a.unshift(rec);
+    try { localStorage.setItem(OWNER_TEST_KEY, JSON.stringify(a)); } catch (e) { /* storage blocked */ }
   }
   function newId() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
@@ -1683,11 +1722,13 @@ window.SLC_VERIFY = {
       '<div class="fsai2-form" style="margin-top:11px"><label class="fsai2-field"><span>' + t('Code', 'Código') + '</span>' +
       '<input class="fsai2-in" id="' + p + 'Code" inputmode="numeric" autocomplete="one-time-code"></label></div>' +
       '<button type="button" class="fsai2-btn" id="' + p + 'Verify" style="margin-top:11px">' + t('Verify', 'Verificar') + '</button>' +
+      '<button type="button" class="fsai2-btn" id="' + p + 'OwnerSkip" hidden style="margin-top:11px;border-color:rgba(255,180,84,.55);color:#f3d9ae">' + t('Owner test — skip verification', 'Prueba del dueño: omitir la verificación') + '</button>' +
       '<div class="fsai2-notebox" id="' + p + 'Note" style="margin-top:12px"></div>' +
       '<button type="button" class="fsai2-btn" id="' + p + 'Back" style="margin-top:11px">' + t('Back', 'Atrás') + '</button>';
   }
   function wireGate(p, opts) {
     var saved = false;
+    var ownerSaved = false;
     function attempt(promise) {
       if (!promise || typeof promise.then !== 'function') return;
       promise.then(function (res) {
@@ -1701,11 +1742,28 @@ window.SLC_VERIFY = {
     }
     $(p + 'Send').addEventListener('click', function () { if (VERIFY) attempt(VERIFY.send(opts.getPhone())); });
     $(p + 'Verify').addEventListener('click', function () { if (VERIFY) attempt(VERIFY.confirm($(p + 'Code').value)); });
+    $(p + 'OwnerSkip').addEventListener('click', function () {
+      /* Owner mode only: bypass the code gate into the owner-test channel.
+         Never writes the pending store or any admin-read store. */
+      if (!ownerMode() || ownerSaved) return;
+      var rec = opts.makeRecord();
+      saveOwnerTest({ kind: rec.kind, fields: rec.data, owner_test: true, ts: Date.now() });
+      ownerSaved = true;
+      saved = true; /* a later code attempt must not also file this as pending */
+      var note = $(p + 'Note');
+      note.innerHTML = t(opts.ownerEn, opts.ownerEs);
+      note.classList.add('show');
+    });
     $(p + 'Back').addEventListener('click', opts.onBack);
     return {
-      show: function () { $(p + 'GatePhone').textContent = opts.getPhone(); },
+      show: function () {
+        $(p + 'GatePhone').textContent = opts.getPhone();
+        var sk = $(p + 'OwnerSkip');
+        if (sk) sk.hidden = !ownerMode();
+      },
       reset: function () {
         saved = false;
+        ownerSaved = false;
         var n = $(p + 'Note'); n.classList.remove('show'); n.innerHTML = '';
         $(p + 'Code').value = '';
       }
@@ -1744,6 +1802,8 @@ window.SLC_VERIFY = {
     getPhone: function () { return fieldVal('rqPhone'); },
     savedEn: 'Your request is saved on this phone as pending — it has NOT been sent.',
     savedEs: 'Tu solicitud quedó guardada en este teléfono como pendiente: NO se ha enviado.',
+    ownerEn: 'Owner test saved — it will show on the admin side tagged “Owner test”. It is not counted as a real request.',
+    ownerEs: 'Prueba del dueño guardada: aparecerá en el lado del administrador con la etiqueta «Owner test». No cuenta como una solicitud real.',
     makeRecord: function () {
       return {
         id: newId(), kind: 'product_request', status: 'pending_verification', createdAt: Date.now(),
@@ -1820,6 +1880,8 @@ window.SLC_VERIFY = {
     getPhone: function () { return fieldVal('rfPhone'); },
     savedEn: 'Your referral is saved on this phone as pending — it has NOT been sent.',
     savedEs: 'Tu referido quedó guardado en este teléfono como pendiente: NO se ha enviado.',
+    ownerEn: 'Owner test saved — it will show on the admin side tagged “Owner test”. It is not counted as a real referral.',
+    ownerEs: 'Prueba del dueño guardada: aparecerá en el lado del administrador con la etiqueta «Owner test». No cuenta como un referido real.',
     makeRecord: function () {
       return {
         id: newId(), kind: 'referral', status: 'pending_verification', createdAt: Date.now(),
@@ -1939,6 +2001,149 @@ window.SLC_VERIFY = {
   syncLang();
 })();
 
+</script>
+<style>
+/* FS AI round 3 (Oct 15 2026) — Photo of the spot (#4) + owner-test mode.
+   fsai3- prefixed; same black-glass/gold language. */
+.fsai3-note{width:100%;box-sizing:border-box;border-radius:13px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--ink);padding:13px 14px;font-size:16px;outline:none;resize:vertical;min-height:62px;font-family:inherit}
+.fsai3-note:focus{border-color:var(--ember)}
+.fsai3-chip{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:calc(128px + env(safe-area-inset-bottom));z-index:250;display:inline-flex;align-items:center;gap:6px;min-height:24px;padding:0 10px;border:1px solid rgba(255,180,84,.45);border-radius:999px;background:rgba(24,20,12,.88);box-shadow:0 8px 24px rgba(0,0,0,.32);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);color:#f3d9ae;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;font-size:11px;font-weight:700;line-height:1;letter-spacing:.03em;pointer-events:none}
+.fsai3-chip i{flex:0 0 auto;width:6px;height:6px;border-radius:50%;background:rgba(255,180,84,.95);box-shadow:0 0 8px rgba(255,180,84,.5)}
+@media (min-width:1024px){.fsai3-chip{right:18px;bottom:62px}}
+</style><script>
+/* FS AI round 3 (Oct 15 2026) — customer app: Photo of the spot (#4, feature
+   'spot_check') + the owner-test indicator.
+   HONESTY: the spot check NEVER fakes an analysis — no measurements, no
+   invented issues; until activation it shows its Not-connected state through
+   the one SLC_AI contract (off / capped / not-connected), exactly like the
+   scanner. OWNER MODE: when Bori is testing (SLC_AI.ownerMode()), a discreet
+   "Owner test" chip sits above the owner switcher; AI calls skip the cap in
+   the stub itself, and the gates (round 2) offer the owner-test skip. */
+(function () {
+  var app = document.querySelector('.app');
+  if (!app) return;
+  var AI = window.SLC_AI;
+  function t(en, es) { return '<span class="en">' + en + '</span><span class="es">' + es + '</span>'; }
+  function isEs() { var r = document.getElementById('lang-es'); return !!(r && r.checked); }
+  function featureOn(id) { return !AI || typeof AI.featureOn !== 'function' || AI.featureOn(id); }
+  function ownerMode() { return !!(AI && typeof AI.ownerMode === 'function' && AI.ownerMode()); }
+  function $(id) { return document.getElementById(id); }
+
+  /* ---------- owner-test indicator (owner mode only, per tab session) ---------- */
+  if (ownerMode() && !$('fsai3OwnerChip')) {
+    var chip = document.createElement('div');
+    chip.className = 'fsai3-chip';
+    chip.id = 'fsai3OwnerChip';
+    chip.innerHTML = '<i aria-hidden="true"></i><span>Owner test</span>';
+    document.body.appendChild(chip);
+  }
+
+  /* ---------- shared AI result copy (same contract wording as round 2) ---------- */
+  function fmtTime(ts, es) {
+    try { return new Date(ts).toLocaleTimeString(es ? 'es' : 'en-US', { hour: 'numeric', minute: '2-digit' }); }
+    catch (e) { return new Date(ts).toLocaleTimeString(); }
+  }
+  function statusBox(html) { return '<div class="fsai-status"><i aria-hidden="true"></i><span>' + html + '</span></div>'; }
+  function aiMsgHTML(res) {
+    if (res && res.off) return t('This feature is turned off right now.', 'Esta función está desactivada por ahora.');
+    if (res && res.capped) {
+      var hrs = AI && AI.controls ? AI.controls().restHours : 12;
+      return t('The assistant is resting — it resets in ' + hrs + ' hours (back at ' + fmtTime(res.resetAt, false) + ').',
+               'El asistente está descansando — se restablece en ' + hrs + ' horas (de vuelta a las ' + fmtTime(res.resetAt, true) + ').');
+    }
+    return t('AI — Not connected. Spot checks arrive at launch.', 'IA — Sin conexión. La revisión de espacios llega con el lanzamiento.');
+  }
+
+  /* ================= PHOTO OF THE SPOT (#4) ================= */
+  var spotCard = document.createElement('div');
+  spotCard.className = 'glass fsai-card';
+  spotCard.id = 'fsai3SpotCard';
+  spotCard.style.margin = '0 0 14px';
+  spotCard.innerHTML =
+    '<div class="eyebrow">' + t('Spot Check', 'Revisión del espacio') + '</div>' +
+    '<h3>' + t('Check your spot', 'Revisa tu espacio') + '</h3>' +
+    '<p>' + t('Photograph where the machine would go, and we’ll check the spot for you.', 'Fotografía el lugar donde iría la máquina y revisaremos el espacio por ti.') + '</p>' +
+    '<button type="button" class="fsai-open" id="fsai3OpenSpot">' + t('Check your spot', 'Revisa tu espacio') + '</button>';
+  var placeCard = $('fsaiPlaceCard');
+  var reqSec = document.getElementById('fs-sec-request');
+  if (placeCard && placeCard.parentNode) placeCard.parentNode.insertBefore(spotCard, placeCard.nextSibling);
+  else if (reqSec) {
+    var formCard = reqSec.querySelector('.glass.card');
+    if (formCard) reqSec.insertBefore(spotCard, formCard); else reqSec.appendChild(spotCard);
+  } else {
+    var reqScreen = document.querySelector('.screen-request');
+    if (reqScreen) reqScreen.appendChild(spotCard);
+  }
+  if (!featureOn('spot_check')) spotCard.style.display = 'none';
+
+  function makeSheet(id) {
+    var s = document.createElement('div');
+    s.className = 'fsai-sheet'; s.id = id; s.hidden = true;
+    s.setAttribute('role', 'dialog'); s.setAttribute('aria-modal', 'true');
+    s.innerHTML = '<div class="fsai-backdrop" data-close="1"></div><div class="fsai-panel"></div>';
+    app.appendChild(s);
+    s.addEventListener('click', function (e) { if (e.target.closest('[data-close]')) s.hidden = true; });
+    return s;
+  }
+  var spotSheet = makeSheet('fsai3SpotSheet');
+  var spotPanel = spotSheet.querySelector('.fsai-panel');
+  spotPanel.innerHTML =
+    '<div class="fsai-head"><h3>' + t('Check your spot', 'Revisa tu espacio') + '</h3>' +
+    '<button type="button" class="fsai-x" data-close="1" aria-label="Close">✕</button></div>' +
+    '<p class="fsai-sub">' + t('Take a photo of the spot where the machine would go — a break room, a lobby, a hallway corner.', 'Toma una foto del lugar donde iría la máquina: un comedor, un vestíbulo, una esquina del pasillo.') + '</p>' +
+    '<div class="fsai2-photo">' +
+    '<span class="fsai2-nophoto" id="fsai3SpotNoPhoto">' + t('No photo yet.', 'Aún sin foto.') + '</span>' +
+    '<img id="fsai3SpotImg" alt="" hidden>' +
+    '<input type="file" id="fsai3SpotFile" accept="image/*" capture="environment" hidden>' +
+    '<button type="button" class="fsai2-btn" id="fsai3SpotPhotoBtn">' + t('Take or choose a photo', 'Toma o elige una foto') + '</button></div>' +
+    '<label class="fsai2-field" style="margin-top:12px"><span>' + t('Anything we should know about the spot? (optional)', '¿Algo que debamos saber del espacio? (opcional)') + '</span>' +
+    '<textarea class="fsai3-note" id="fsai3SpotNote"></textarea></label>' +
+    '<button type="button" class="fsai2-btn primary" id="fsai3SpotGo" disabled style="margin-top:12px">' + t('Check my spot', 'Revisar mi espacio') + '</button>' +
+    '<div class="fsai2-result" id="fsai3SpotResult" hidden></div>' +
+    '<button type="button" class="fsai2-btn" id="fsai3SpotToRequest" style="margin-top:12px">' + t('Include it with your request', 'Inclúyelo con tu solicitud') + '</button>';
+
+  var spotFile = $('fsai3SpotFile'), spotImg = $('fsai3SpotImg');
+  $('fsai3SpotPhotoBtn').addEventListener('click', function () { spotFile.click(); });
+  spotFile.addEventListener('change', function () {
+    var f = spotFile.files && spotFile.files[0];
+    if (!f) return;
+    spotImg.src = URL.createObjectURL(f);
+    spotImg.hidden = false;
+    $('fsai3SpotNoPhoto').hidden = true;
+    $('fsai3SpotGo').disabled = false;
+  });
+  $('fsai3SpotGo').addEventListener('click', function () {
+    if (!AI) return;
+    AI.call('spot_check', { hasPhoto: true, note: String($('fsai3SpotNote').value || '').trim() }).then(function (res) {
+      var box = $('fsai3SpotResult');
+      box.innerHTML = statusBox(aiMsgHTML(res));
+      box.hidden = false;
+    });
+  });
+  $('fsai3OpenSpot').addEventListener('click', function () { spotSheet.hidden = false; });
+  $('fsai3SpotToRequest').addEventListener('click', function () {
+    /* the app's own navigation to the existing request form (same handoff as
+       the Placement Assistant's "Ask us directly") */
+    spotSheet.hidden = true;
+    var r = document.getElementById('screen-request');
+    if (r && !r.checked) { r.checked = true; r.dispatchEvent(new Event('change', { bubbles: true })); }
+    setTimeout(function () {
+      var tab = document.getElementById('fs-tab-request');
+      if (tab) { tab.click(); return; }
+      var sec = document.getElementById('fs-sec-request') || document.querySelector('.screen-request');
+      if (sec) sec.scrollIntoView();
+    }, 80);
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') spotSheet.hidden = true; });
+  function syncLang() {
+    var es = isEs();
+    spotSheet.setAttribute('aria-label', es ? 'Revisa tu espacio' : 'Check your spot');
+    var x = spotSheet.querySelector('.fsai-x');
+    if (x) x.setAttribute('aria-label', es ? 'Cerrar' : 'Close');
+  }
+  document.querySelectorAll('input[name=lang]').forEach(function (r) { r.addEventListener('change', syncLang); });
+  syncLang();
+})();
 </script>
 <!-- OWNER-SWITCHER:START (permanent owner feature — session-gated) -->
 <style>
