@@ -1134,12 +1134,103 @@ document.addEventListener('click',function(e){var a=e.target.closest&&e.target.c
    accepting a JSON body {task, payload} and returning structured JSON. The Gemini
    API key lives ONLY as a back-end secret (GEMINI_API_KEY) — never in this file,
    never in the repo. On activation, call() is re-pointed at that endpoint and
-   connected flips to true. Until then, call() makes NO network request and
-   resolves {ok:false, connected:false}, and every AI surface in the app shows
-   its honest "Not connected" state. */
+   connected flips to true. Until then, call() makes NO network request and every
+   AI surface in the app shows its honest "Not connected" state.
+
+   SHARED CONTROLS + USAGE CAP (identical contract in the admin app):
+   - Controls live in localStorage 'slc_ai_controls_v1':
+     {cap:20, restHours:12, features:{<featureId>:{on:true}}} — defaults apply when
+     absent; written from the admin kill-switch panel. Customer feature ids:
+     'scanner', 'compare_scans', 'placement_assistant'.
+   - Usage ledger lives in localStorage 'slc_ai_usage_v1':
+     {count:0, perFeature:{}, restUntil:0, windowStart:<ts>}.
+   - call(task) resolves exactly one of:
+       {ok:false, off:true}              the task's feature is switched off
+       {ok:false, capped:true, resetAt}  the assistant is resting (restUntil in
+                                         the future), or this call reached the
+                                         cap and the rest has just started
+       {ok:false, connected:false}       the use was counted; AI not connected
+     An expired rest auto-resets the ledger before the use is counted.
+   - Scope lock: "I can only help with FireSnacks machines, products, and
+     placements." / "Solo puedo ayudarte con máquinas, productos y ubicaciones
+     de FireSnacks." */
 window.SLC_AI = {
   connected: false,
-  call: function (task, payload) { return Promise.resolve({ ok: false, connected: false }); }
+  CONTROLS_KEY: 'slc_ai_controls_v1',
+  USAGE_KEY: 'slc_ai_usage_v1',
+  controls: function () {
+    var c = { cap: 20, restHours: 12, features: {} };
+    try {
+      var raw = JSON.parse(localStorage.getItem(window.SLC_AI.CONTROLS_KEY) || 'null');
+      if (raw && typeof raw === 'object') {
+        if (typeof raw.cap === 'number' && raw.cap > 0) c.cap = raw.cap;
+        if (typeof raw.restHours === 'number' && raw.restHours > 0) c.restHours = raw.restHours;
+        if (raw.features && typeof raw.features === 'object') c.features = raw.features;
+      }
+    } catch (e) { /* unreadable controls -> defaults */ }
+    return c;
+  },
+  featureOn: function (id) {
+    var f = window.SLC_AI.controls().features[id];
+    return !(f && f.on === false);
+  },
+  usage: function () {
+    var u = null;
+    try { u = JSON.parse(localStorage.getItem(window.SLC_AI.USAGE_KEY) || 'null'); } catch (e) { u = null; }
+    if (!u || typeof u !== 'object' || typeof u.count !== 'number') {
+      u = { count: 0, perFeature: {}, restUntil: 0, windowStart: Date.now() };
+    }
+    if (!u.perFeature || typeof u.perFeature !== 'object') u.perFeature = {};
+    if (typeof u.restUntil !== 'number') u.restUntil = 0;
+    if (typeof u.windowStart !== 'number') u.windowStart = Date.now();
+    return u;
+  },
+  _saveUsage: function (u) {
+    try { localStorage.setItem(window.SLC_AI.USAGE_KEY, JSON.stringify(u)); } catch (e) { /* storage blocked: fail honest */ }
+  },
+  featureForTask: function (task) {
+    var s = String(task || '');
+    if (s.indexOf('compare') === 0) return 'compare_scans';
+    if (s.indexOf('scanner') === 0) return 'scanner';
+    if (s.indexOf('placement') === 0) return 'placement_assistant';
+    return s;
+  },
+  call: function (task, payload) {
+    var S = window.SLC_AI;
+    var feature = S.featureForTask(task);
+    if (!S.featureOn(feature)) return Promise.resolve({ ok: false, off: true });
+    var ctl = S.controls();
+    var u = S.usage();
+    var now = Date.now();
+    if (u.restUntil && u.restUntil <= now) {
+      /* an expired rest auto-resets the ledger before anything else happens */
+      u = { count: 0, perFeature: {}, restUntil: 0, windowStart: now };
+      S._saveUsage(u);
+    }
+    if (u.restUntil > now) return Promise.resolve({ ok: false, capped: true, resetAt: u.restUntil });
+    if (u.count >= ctl.cap) {
+      u.restUntil = now + ctl.restHours * 3600 * 1000;
+      S._saveUsage(u);
+      return Promise.resolve({ ok: false, capped: true, resetAt: u.restUntil });
+    }
+    u.count += 1;
+    u.perFeature[feature] = (u.perFeature[feature] || 0) + 1;
+    S._saveUsage(u);
+    return Promise.resolve({ ok: false, connected: false });
+  }
+};
+
+/* SLC_VERIFY — the phone-verification integration point for customer submissions
+   (product requests + referrals). ACTIVATION CONTRACT: at launch, the back end
+   texts a code to the customer's phone and checks it here; only a VERIFIED
+   submission may ever leave this phone (to the admin Inbox). Until then
+   connected is false, send()/confirm() make NO network request and resolve
+   {ok:false, connected:false}, and the UI keeps the submission on this phone
+   only, as 'pending_verification' in 'slc_pending_submissions_v1'. */
+window.SLC_VERIFY = {
+  connected: false,
+  send: function (phone) { return Promise.resolve({ ok: false, connected: false }); },
+  confirm: function (code) { return Promise.resolve({ ok: false, connected: false }); }
 };
 
 </script><script>
@@ -1380,4 +1471,555 @@ window.SLC_AI = {
   syncLang();
 })();
 
-</script></body></html>
+</script><style>
+/* FS AI round 2 (Oct 15 2026) — scanner, compare, gated submissions, AR entry.
+   Same black-glass/gold language; fsai2- prefixed so nothing else is touched. */
+.fsai2-scope{margin:0 0 12px;color:var(--muted);font-size:12.5px;line-height:1.45}
+.fsai2-photo{border:1px dashed rgba(255,255,255,.2);border-radius:16px;background:rgba(255,255,255,.03);padding:12px;display:grid;gap:10px;justify-items:center;text-align:center}
+.fsai2-photo img{max-width:100%;max-height:240px;border-radius:12px;display:block}
+.fsai2-nophoto{color:var(--muted);font-size:13.5px;padding:12px 6px}
+.fsai2-btn{width:100%;box-sizing:border-box;border-radius:14px;border:1px solid var(--line);padding:13px 16px;background:rgba(255,255,255,.06);color:#fff;font-weight:700;font-size:15px;cursor:pointer}
+.fsai2-btn.primary{border-color:rgba(255,145,79,.55);background:linear-gradient(145deg,rgba(217,45,53,.28),rgba(255,145,79,.14))}
+.fsai2-btn[disabled]{opacity:.45;cursor:default}
+.fsai2-result{margin-top:12px;display:grid;gap:10px}
+.fsai2-result[hidden]{display:none}
+.fsai2-reqoffer{margin-top:14px;border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:13px;background:rgba(255,255,255,.025);display:grid;gap:8px}
+.fsai2-reqoffer b{font-size:15px}
+.fsai2-reqoffer p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.45}
+.fsai2-h3{margin:16px 0 4px;font-size:17px}
+.fsai2-hr{border:none;border-top:1px solid rgba(255,255,255,.09);margin:18px 0 2px}
+.fsai2-cmp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+.fsai2-slot{border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:10px;display:grid;gap:8px;align-content:start;background:rgba(255,255,255,.025);min-width:0}
+.fsai2-slot b{font-size:13.5px}
+.fsai2-slot img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block}
+.fsai2-slotph{aspect-ratio:1;border-radius:10px;border:1px dashed rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12.5px;text-align:center;padding:6px}
+.fsai2-slotstat{font-size:12.5px;line-height:1.45;color:#f3d9ae}
+.fsai2-slotstat:empty{display:none}
+.fsai2-cmpbox{margin-top:12px;border:1px dashed rgba(240,179,93,.45);background:rgba(240,179,93,.07);border-radius:14px;padding:14px;color:#f3d9ae;font-size:14px;line-height:1.5;text-align:center}
+.fsai2-form{display:grid;gap:11px}
+.fsai2-field{display:grid;gap:5px;text-align:left}
+.fsai2-field>span{font-size:12px;font-weight:750;color:#ddd}
+.fsai2-field small{color:var(--muted);font-size:12px;line-height:1.4}
+.fsai2-in{width:100%;box-sizing:border-box;border-radius:13px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--ink);padding:13px 14px;font-size:16px;outline:none}
+.fsai2-in:focus{border-color:var(--ember)}
+.fsai2-in.bad{border-color:rgba(255,95,95,.9);box-shadow:0 0 0 1px rgba(255,95,95,.55)}
+.fsai2-err{display:none;margin-top:11px;padding:11px 12px;border-radius:13px;border:1px solid rgba(255,95,95,.5);background:rgba(255,95,95,.09);color:#ffc9c9;font-size:13.5px;line-height:1.45}
+.fsai2-err.show{display:block}
+.fsai2-notebox{display:none;padding:12px;border-radius:13px;border:1px solid rgba(240,179,93,.45);background:rgba(240,179,93,.09);color:#f3d9ae;font-size:14px;line-height:1.5}
+.fsai2-notebox.show{display:block}
+.fsai2-phone{font-size:19px;font-weight:800;letter-spacing:.01em;margin:0 0 12px}
+.fsai2-mgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 12px}
+.fsai2-mach{border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03);border-radius:16px;padding:10px;display:grid;gap:7px;text-align:center;cursor:pointer;color:var(--ink);min-width:0}
+.fsai2-mach img{width:100%;aspect-ratio:.8;object-fit:contain;border-radius:10px;background:#09090a;display:block}
+.fsai2-mach b{font-size:14px;line-height:1.25}
+.fsai2-mach small{color:var(--muted);font-size:11.5px;line-height:1.35}
+.fsai2-mach.on{border-color:var(--ember);box-shadow:0 0 0 1px var(--ember) inset;background:rgba(255,145,79,.08)}
+
+</style><script>
+/* FS AI round 2 (Oct 15 2026) — customer app: Product scanner + Compare two scans,
+   gated product-request + referral submissions (verification-pending, this phone
+   only), and the AR placement entry (honest Not-connected state).
+   HONESTY RULES (spec + addenda, non-negotiable): no AI result is ever faked —
+   identification and comparison show their Not-connected state until activation,
+   and NO nutrition panel or product name is ever rendered as if identified.
+   NOTHING a customer submits leaves this phone unverified: submissions are
+   written ONLY to 'slc_pending_submissions_v1' with status
+   'pending_verification'. The admin-read stores ('slc_inbox', 'slc_products',
+   'slc_refunds', ...) are never written by this code. Scope lock: the assistant
+   can only help with FireSnacks machines, products, and placements. */
+(function () {
+  var app = document.querySelector('.app');
+  if (!app) return;
+  var AI = window.SLC_AI, VERIFY = window.SLC_VERIFY;
+  function t(en, es) { return '<span class="en">' + en + '</span><span class="es">' + es + '</span>'; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function isEs() { var r = document.getElementById('lang-es'); return !!(r && r.checked); }
+  function featureOn(id) { return !AI || typeof AI.featureOn !== 'function' || AI.featureOn(id); }
+  function $(id) { return document.getElementById(id); }
+  var SCOPE_EN = 'I can only help with FireSnacks machines, products, and placements.';
+  var SCOPE_ES = 'Solo puedo ayudarte con máquinas, productos y ubicaciones de FireSnacks.';
+  var IDENT_NC_EN = 'AI — Not connected. Product identification and nutrition facts arrive at launch.';
+  var IDENT_NC_ES = 'IA — Sin conexión. La identificación de productos y los datos nutricionales llegan con el lanzamiento.';
+
+  /* ---------- pending submissions: THIS PHONE ONLY, never an admin-read store ---------- */
+  var PENDING_KEY = 'slc_pending_submissions_v1';
+  function loadPending() {
+    try { var a = JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); return Object.prototype.toString.call(a) === '[object Array]' ? a : []; }
+    catch (e) { return []; }
+  }
+  function savePending(rec) {
+    var a = loadPending();
+    a.unshift(rec);
+    try { localStorage.setItem(PENDING_KEY, JSON.stringify(a)); } catch (e) { /* storage blocked */ }
+  }
+  function newId() { return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+
+  /* ---------- shared AI result copy ---------- */
+  function fmtTime(ts, es) {
+    try { return new Date(ts).toLocaleTimeString(es ? 'es' : 'en-US', { hour: 'numeric', minute: '2-digit' }); }
+    catch (e) { return new Date(ts).toLocaleTimeString(); }
+  }
+  function restingHTML(res) {
+    var hrs = AI && AI.controls ? AI.controls().restHours : 12;
+    return t('The assistant is resting — it resets in ' + hrs + ' hours (back at ' + fmtTime(res.resetAt, false) + ').',
+             'El asistente está descansando — se restablece en ' + hrs + ' horas (de vuelta a las ' + fmtTime(res.resetAt, true) + ').');
+  }
+  function statusBox(html) { return '<div class="fsai-status"><i aria-hidden="true"></i><span>' + html + '</span></div>'; }
+  function aiMsgHTML(res, ncEn, ncEs) {
+    if (res && res.off) return t('This feature is turned off right now.', 'Esta función está desactivada por ahora.');
+    if (res && res.capped) return restingHTML(res);
+    return t(ncEn, ncEs);
+  }
+
+  /* ---------- sheets ---------- */
+  function makeSheet(id) {
+    var s = document.createElement('div');
+    s.className = 'fsai-sheet'; s.id = id; s.hidden = true;
+    s.setAttribute('role', 'dialog'); s.setAttribute('aria-modal', 'true');
+    s.innerHTML = '<div class="fsai-backdrop" data-close="1"></div><div class="fsai-panel"></div>';
+    app.appendChild(s);
+    s.addEventListener('click', function (e) { if (e.target.closest('[data-close]')) s.hidden = true; });
+    return s;
+  }
+  function headHTML(en, es) {
+    return '<div class="fsai-head"><h3>' + t(en, es) + '</h3>' +
+      '<button type="button" class="fsai-x" data-close="1" aria-label="Close">✕</button></div>';
+  }
+
+  /* ================= SCANNER (sheet also holds Compare two scans) ================= */
+  var scanCard = document.createElement('div');
+  scanCard.className = 'glass fsai-card';
+  scanCard.id = 'fsai2ScannerCard';
+  scanCard.innerHTML =
+    '<div class="eyebrow">' + t('Product Scanner', 'Escáner de productos') + '</div>' +
+    '<h3>' + t('Scan a product', 'Escanea un producto') + '</h3>' +
+    '<p>' + t('Snap a photo of any product to identify it and see its nutrition facts — or request it if we don’t carry it yet.', 'Toma una foto de cualquier producto para identificarlo y ver sus datos nutricionales, o pídelo si aún no lo tenemos.') + '</p>' +
+    '<button type="button" class="fsai-open" id="fsai2OpenScanner">' + t('Open the scanner', 'Abrir el escáner') + '</button>';
+  var finderCard = $('fsaiFinderCard');
+  if (finderCard && finderCard.parentNode) finderCard.parentNode.insertBefore(scanCard, finderCard.nextSibling);
+  else {
+    var offer = document.querySelector('.screen-home .fs-offer');
+    if (offer && offer.parentNode) offer.parentNode.insertBefore(scanCard, offer.nextSibling);
+    else { var hs = document.querySelector('.screen-home'); if (hs) hs.appendChild(scanCard); }
+  }
+  if (!featureOn('scanner')) scanCard.style.display = 'none';
+
+  var scanSheet = makeSheet('fsai2ScannerSheet');
+  var scanPanel = scanSheet.querySelector('.fsai-panel');
+  function slotHTML(n) {
+    return '<div class="fsai2-slot">' +
+      '<b>' + t('Scan ' + n, 'Escaneo ' + n) + '</b>' +
+      '<span class="fsai2-slotph" id="fsai2CmpPh' + n + '">' + t('No photo yet', 'Aún sin foto') + '</span>' +
+      '<img id="fsai2CmpImg' + n + '" alt="" hidden>' +
+      '<input type="file" id="fsai2CmpFile' + n + '" accept="image/*" capture="environment" hidden>' +
+      '<button type="button" class="fsai2-btn" id="fsai2CmpPhoto' + n + '">' + t('Take or choose a photo', 'Toma o elige una foto') + '</button>' +
+      '<button type="button" class="fsai2-btn primary" id="fsai2CmpId' + n + '" disabled>' + t('Identify', 'Identificar') + '</button>' +
+      '<div class="fsai2-slotstat" id="fsai2CmpStat' + n + '"></div></div>';
+  }
+  scanPanel.innerHTML =
+    headHTML('Product Scanner', 'Escáner de productos') +
+    '<p class="fsai-sub">' + t('Take a photo of any product. The scanner identifies it and shows its nutrition facts.', 'Toma una foto de cualquier producto. El escáner lo identifica y muestra sus datos nutricionales.') + '</p>' +
+    '<p class="fsai2-scope">' + t(SCOPE_EN, SCOPE_ES) + '</p>' +
+    '<div class="fsai2-photo">' +
+    '<span class="fsai2-nophoto" id="fsai2ScanNoPhoto">' + t('No photo yet.', 'Aún sin foto.') + '</span>' +
+    '<img id="fsai2ScanImg" alt="" hidden>' +
+    '<input type="file" id="fsai2ScanFile" accept="image/*" capture="environment" hidden>' +
+    '<button type="button" class="fsai2-btn" id="fsai2ScanPhotoBtn">' + t('Take or choose a photo', 'Toma o elige una foto') + '</button></div>' +
+    '<button type="button" class="fsai2-btn primary" id="fsai2Identify" disabled style="margin-top:12px">' + t('Identify this product', 'Identificar este producto') + '</button>' +
+    '<div class="fsai2-result" id="fsai2ScanResult" hidden></div>' +
+    '<button type="button" class="fsai2-btn" id="fsai2ToCatalog" style="margin-top:12px">' + t('Or find it in the catalog', 'O búscalo en el catálogo') + '</button>' +
+    '<div class="fsai2-reqoffer"><b>' + t('Want a product we don’t carry yet?', '¿Quieres un producto que aún no tenemos?') + '</b>' +
+    '<p>' + t('Send us a product request — we review every one.', 'Envíanos una solicitud de producto: revisamos todas.') + '</p>' +
+    '<button type="button" class="fsai2-btn" id="fsai2ReqOpen">' + t('Request this product', 'Pide este producto') + '</button></div>' +
+    '<div id="fsai2CompareWrap"><hr class="fsai2-hr">' +
+    '<h4 class="fsai2-h3">' + t('Compare two scans', 'Compara dos escaneos') + '</h4>' +
+    '<p class="fsai2-scope">' + t('Scan two products and see them side by side.', 'Escanea dos productos y míralos lado a lado.') + '</p>' +
+    '<div class="fsai2-cmp">' + slotHTML(1) + slotHTML(2) + '</div>' +
+    '<div class="fsai2-cmpbox">' + t('Side-by-side comparison arrives at launch.', 'La comparación lado a lado llega con el lanzamiento.') + '</div></div>';
+  if (!featureOn('compare_scans')) $('fsai2CompareWrap').style.display = 'none';
+
+  function wirePhoto(fileId, imgId, phId, btnId, idBtnId) {
+    var file = $(fileId), img = $(imgId);
+    $(btnId).addEventListener('click', function () { file.click(); });
+    file.addEventListener('change', function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+      img.src = URL.createObjectURL(f);
+      img.hidden = false;
+      var ph = $(phId); if (ph) ph.hidden = true;
+      var b = $(idBtnId); if (b) b.disabled = false;
+    });
+  }
+  wirePhoto('fsai2ScanFile', 'fsai2ScanImg', 'fsai2ScanNoPhoto', 'fsai2ScanPhotoBtn', 'fsai2Identify');
+  $('fsai2Identify').addEventListener('click', function () {
+    if (!AI) return;
+    AI.call('scanner_identify', { hasPhoto: true }).then(function (res) {
+      var box = $('fsai2ScanResult');
+      box.innerHTML = statusBox(aiMsgHTML(res, IDENT_NC_EN, IDENT_NC_ES));
+      box.hidden = false;
+    });
+  });
+  [1, 2].forEach(function (n) {
+    wirePhoto('fsai2CmpFile' + n, 'fsai2CmpImg' + n, 'fsai2CmpPh' + n, 'fsai2CmpPhoto' + n, 'fsai2CmpId' + n);
+    $('fsai2CmpId' + n).addEventListener('click', function () {
+      if (!AI) return;
+      AI.call('compare_identify', { slot: n, hasPhoto: true }).then(function (res) {
+        $('fsai2CmpStat' + n).innerHTML = aiMsgHTML(res, IDENT_NC_EN, IDENT_NC_ES);
+      });
+    });
+  });
+  $('fsai2ToCatalog').addEventListener('click', function () {
+    scanSheet.hidden = true;
+    var b = $('fsaiOpenFinder');
+    if (b) b.click();
+  });
+
+  /* ================= verification gate (shared by both gated flows) ================= */
+  function gateHTML(p) {
+    return '<p class="fsai-sub">' + t('One quick check: we verify your phone before a submission can reach us.', 'Una comprobación rápida: verificamos tu teléfono antes de que una solicitud pueda llegar a nosotros.') + '</p>' +
+      '<p class="fsai2-scope" style="margin-bottom:4px">' + t('We’ll text the code to', 'Enviaremos el código por mensaje a') + '</p>' +
+      '<div class="fsai2-phone" id="' + p + 'GatePhone"></div>' +
+      '<button type="button" class="fsai2-btn primary" id="' + p + 'Send">' + t('Text me the code', 'Envíame el código') + '</button>' +
+      '<div class="fsai2-form" style="margin-top:11px"><label class="fsai2-field"><span>' + t('Code', 'Código') + '</span>' +
+      '<input class="fsai2-in" id="' + p + 'Code" inputmode="numeric" autocomplete="one-time-code"></label></div>' +
+      '<button type="button" class="fsai2-btn" id="' + p + 'Verify" style="margin-top:11px">' + t('Verify', 'Verificar') + '</button>' +
+      '<div class="fsai2-notebox" id="' + p + 'Note" style="margin-top:12px"></div>' +
+      '<button type="button" class="fsai2-btn" id="' + p + 'Back" style="margin-top:11px">' + t('Back', 'Atrás') + '</button>';
+  }
+  function wireGate(p, opts) {
+    var saved = false;
+    function attempt(promise) {
+      if (!promise || typeof promise.then !== 'function') return;
+      promise.then(function (res) {
+        if (res && res.connected) return; /* activation path: verified submissions continue to the back end */
+        if (!saved) { savePending(opts.makeRecord()); saved = true; }
+        var note = $(p + 'Note');
+        note.innerHTML = t('Verification — Not connected. Code texting arrives at launch. ' + opts.savedEn,
+                           'Verificación — Sin conexión. El envío de códigos por mensaje llega con el lanzamiento. ' + opts.savedEs);
+        note.classList.add('show');
+      });
+    }
+    $(p + 'Send').addEventListener('click', function () { if (VERIFY) attempt(VERIFY.send(opts.getPhone())); });
+    $(p + 'Verify').addEventListener('click', function () { if (VERIFY) attempt(VERIFY.confirm($(p + 'Code').value)); });
+    $(p + 'Back').addEventListener('click', opts.onBack);
+    return {
+      show: function () { $(p + 'GatePhone').textContent = opts.getPhone(); },
+      reset: function () {
+        saved = false;
+        var n = $(p + 'Note'); n.classList.remove('show'); n.innerHTML = '';
+        $(p + 'Code').value = '';
+      }
+    };
+  }
+  function fieldVal(id) { var el = $(id); return el ? String(el.value || '').trim() : ''; }
+  function validate(ids, errId) {
+    var okAll = true;
+    ids.forEach(function (id) {
+      var el = $(id), v = fieldVal(id);
+      el.classList.toggle('bad', !v);
+      if (!v) okAll = false;
+    });
+    $(errId).classList.toggle('show', !okAll);
+    return okAll;
+  }
+
+  /* ================= product-request flow (gated) ================= */
+  var reqSheet = makeSheet('fsai2RequestSheet');
+  var reqPanel = reqSheet.querySelector('.fsai-panel');
+  reqPanel.innerHTML =
+    headHTML('Request a product', 'Pide un producto') +
+    '<div id="rqStep1">' +
+    '<p class="fsai-sub">' + t('Tell us which product you want in the machine. We review every request.', 'Dinos qué producto quieres en la máquina. Revisamos todas las solicitudes.') + '</p>' +
+    '<div class="fsai2-form">' +
+    '<label class="fsai2-field"><span>' + t('Your name *', 'Tu nombre *') + '</span><input class="fsai2-in" id="rqName" type="text" autocomplete="name"></label>' +
+    '<label class="fsai2-field"><span>' + t('Your phone *', 'Tu teléfono *') + '</span><input class="fsai2-in" id="rqPhone" type="tel" autocomplete="tel"></label>' +
+    '<label class="fsai2-field"><span>' + t('Company name and/or location *', 'Nombre de la empresa y/o ubicación *') + '</span><input class="fsai2-in" id="rqCompany" type="text"></label>' +
+    '<label class="fsai2-field"><span>' + t('Machine number *', 'Número de máquina *') + '</span><input class="fsai2-in" id="rqMachine" type="text"><small>' + t('The number on the machine’s label', 'El número en la etiqueta de la máquina') + '</small></label>' +
+    '<label class="fsai2-field"><span>' + t('Product wanted *', 'Producto que quieres *') + '</span><input class="fsai2-in" id="rqProduct" type="text"><small>' + t('Name or a short description', 'Nombre o una descripción breve') + '</small></label>' +
+    '</div>' +
+    '<div class="fsai2-err" id="rqErr">' + t('Please fill in every required field.', 'Completa todos los campos obligatorios, por favor.') + '</div>' +
+    '<button type="button" class="fsai2-btn primary" id="rqContinue" style="margin-top:12px">' + t('Continue', 'Continuar') + '</button></div>' +
+    '<div id="rqStep2" hidden><h4 class="fsai2-h3" style="margin-top:2px">' + t('Verify your phone', 'Verifica tu teléfono') + '</h4>' + gateHTML('rq') + '</div>';
+  var rqGate = wireGate('rq', {
+    getPhone: function () { return fieldVal('rqPhone'); },
+    savedEn: 'Your request is saved on this phone as pending — it has NOT been sent.',
+    savedEs: 'Tu solicitud quedó guardada en este teléfono como pendiente: NO se ha enviado.',
+    makeRecord: function () {
+      return {
+        id: newId(), kind: 'product_request', status: 'pending_verification', createdAt: Date.now(),
+        data: { name: fieldVal('rqName'), phone: fieldVal('rqPhone'), company: fieldVal('rqCompany'), machine: fieldVal('rqMachine'), product: fieldVal('rqProduct') }
+      };
+    },
+    onBack: function () { $('rqStep2').hidden = true; $('rqStep1').hidden = false; }
+  });
+  $('rqContinue').addEventListener('click', function () {
+    if (!validate(['rqName', 'rqPhone', 'rqCompany', 'rqMachine', 'rqProduct'], 'rqErr')) return;
+    $('rqStep1').hidden = true;
+    $('rqStep2').hidden = false;
+    rqGate.show();
+  });
+  function openRequest(product) {
+    if (product) $('rqProduct').value = product;
+    rqGate.reset();
+    $('rqStep2').hidden = true;
+    $('rqStep1').hidden = false;
+    $('rqErr').classList.remove('show');
+    reqSheet.hidden = false;
+  }
+  $('fsai2ReqOpen').addEventListener('click', function () { scanSheet.hidden = true; openRequest(''); });
+  /* the same request flow from the finder's empty state (button added into last round's empty box) */
+  var finderEmpty = $('fsaiEmpty');
+  if (finderEmpty) {
+    var fb = document.createElement('button');
+    fb.type = 'button';
+    fb.className = 'fsai2-btn';
+    fb.id = 'fsai2ReqFromFinder';
+    fb.style.marginTop = '12px';
+    fb.innerHTML = t('Request this product', 'Pide este producto');
+    fb.addEventListener('click', function () {
+      var q = $('fsaiSearch') ? $('fsaiSearch').value : '';
+      var fs = $('fsaiFinderSheet'); if (fs) fs.hidden = true;
+      openRequest(q ? String(q).trim() : '');
+    });
+    finderEmpty.appendChild(fb);
+  }
+
+  /* ================= referral flow (gated) ================= */
+  var refCard = document.createElement('div');
+  refCard.className = 'glass fsai-card';
+  refCard.id = 'fsai2ReferralCard';
+  refCard.style.marginTop = '12px';
+  refCard.innerHTML =
+    '<div class="eyebrow">' + t('Refer a Business', 'Referir un negocio') + '</div>' +
+    '<h3>' + t('Forward a referral', 'Envía un referido') + '</h3>' +
+    '<p>' + t('Know a business that could use a machine? Send the referral our way — we verify your phone first, right here.', '¿Conoces un negocio que podría usar una máquina? Envíanos el referido: primero verificamos tu teléfono, aquí mismo.') + '</p>' +
+    '<button type="button" class="fsai-open" id="fsai2OpenReferral">' + t('Start a referral', 'Comenzar un referido') + '</button>';
+  var rewSec = document.querySelector('.screen-rewards');
+  if (rewSec) {
+    var rewCard = rewSec.querySelector('.glass.card');
+    if (rewCard && rewCard.parentNode) rewCard.parentNode.insertBefore(refCard, rewCard.nextSibling);
+    else rewSec.appendChild(refCard);
+  }
+  var refSheet = makeSheet('fsai2ReferralSheet');
+  var refPanel = refSheet.querySelector('.fsai-panel');
+  refPanel.innerHTML =
+    headHTML('Forward a referral', 'Envía un referido') +
+    '<div id="rfStep1">' +
+    '<p class="fsai-sub">' + t('Tell us about the business. We’ll reach out — thank you for thinking of us.', 'Cuéntanos sobre el negocio. Nosotros nos comunicamos: gracias por pensar en nosotros.') + '</p>' +
+    '<div class="fsai2-form">' +
+    '<label class="fsai2-field"><span>' + t('Your name *', 'Tu nombre *') + '</span><input class="fsai2-in" id="rfName" type="text" autocomplete="name"></label>' +
+    '<label class="fsai2-field"><span>' + t('Your phone *', 'Tu teléfono *') + '</span><input class="fsai2-in" id="rfPhone" type="tel" autocomplete="tel"></label>' +
+    '<label class="fsai2-field"><span>' + t('Business name *', 'Nombre del negocio *') + '</span><input class="fsai2-in" id="rfBiz" type="text"></label>' +
+    '<label class="fsai2-field"><span>' + t('Business location *', 'Ubicación del negocio *') + '</span><input class="fsai2-in" id="rfLoc" type="text"></label>' +
+    '<label class="fsai2-field"><span>' + t('Machine number (optional)', 'Número de máquina (opcional)') + '</span><input class="fsai2-in" id="rfMachine" type="text"><small>' + t('Only if it’s about a specific machine', 'Solo si es sobre una máquina específica') + '</small></label>' +
+    '</div>' +
+    '<div class="fsai2-err" id="rfErr">' + t('Please fill in every required field.', 'Completa todos los campos obligatorios, por favor.') + '</div>' +
+    '<button type="button" class="fsai2-btn primary" id="rfContinue" style="margin-top:12px">' + t('Continue', 'Continuar') + '</button></div>' +
+    '<div id="rfStep2" hidden><h4 class="fsai2-h3" style="margin-top:2px">' + t('Verify your phone', 'Verifica tu teléfono') + '</h4>' + gateHTML('rf') + '</div>';
+  var rfGate = wireGate('rf', {
+    getPhone: function () { return fieldVal('rfPhone'); },
+    savedEn: 'Your referral is saved on this phone as pending — it has NOT been sent.',
+    savedEs: 'Tu referido quedó guardado en este teléfono como pendiente: NO se ha enviado.',
+    makeRecord: function () {
+      return {
+        id: newId(), kind: 'referral', status: 'pending_verification', createdAt: Date.now(),
+        data: { name: fieldVal('rfName'), phone: fieldVal('rfPhone'), business: fieldVal('rfBiz'), location: fieldVal('rfLoc'), machine: fieldVal('rfMachine') }
+      };
+    },
+    onBack: function () { $('rfStep2').hidden = true; $('rfStep1').hidden = false; }
+  });
+  $('rfContinue').addEventListener('click', function () {
+    if (!validate(['rfName', 'rfPhone', 'rfBiz', 'rfLoc'], 'rfErr')) return;
+    $('rfStep1').hidden = true;
+    $('rfStep2').hidden = false;
+    rfGate.show();
+  });
+  $('fsai2OpenReferral').addEventListener('click', function () {
+    rfGate.reset();
+    $('rfStep2').hidden = true;
+    $('rfStep1').hidden = false;
+    $('rfErr').classList.remove('show');
+    refSheet.hidden = false;
+  });
+
+  /* ================= AR placement entry ================= */
+  var arCard = document.createElement('div');
+  arCard.className = 'glass fsai-card';
+  arCard.id = 'fsai2ArCard';
+  arCard.style.marginTop = '14px';
+  arCard.innerHTML =
+    '<div class="eyebrow">' + t('AR Placement', 'Ubicación con RA') + '</div>' +
+    '<h3>' + t('See a machine in your space — AR hologram', 'Ve una máquina en tu espacio: holograma RA') + '</h3>' +
+    '<p>' + t('Pick one of our machines and preview it full-size, right where it would go.', 'Elige una de nuestras máquinas y mírala a tamaño real, justo donde iría.') + '</p>' +
+    '<button type="button" class="fsai-open" id="fsai2OpenAr">' + t('Choose a machine', 'Elige una máquina') + '</button>';
+  var buildSec = document.querySelector('.screen-build');
+  if (buildSec) {
+    var wrap = buildSec.querySelector('.latest-builder-wrap');
+    if (wrap && wrap.parentNode) wrap.parentNode.insertBefore(arCard, wrap.nextSibling);
+    else buildSec.appendChild(arCard);
+  }
+  var MACHINES = [
+    { key: 'snack', en: 'Premium Snack', es: 'Snacks Premium', den: 'Snack bags, pastries, candy bars and grab-and-go items.', des: 'Bolsas de snacks, pastelitos, barras de dulce y productos para llevar.' },
+    { key: 'combo', en: 'Combo Snack + Drink', es: 'Combo Snacks + Bebidas', den: 'Snacks, candy, bottles and cans in one machine.', des: 'Snacks, dulces, botellas y latas en una sola máquina.' },
+    { key: 'cold', en: 'Cold Drinks', es: 'Bebidas Frías', den: 'Dedicated cold beverage machine with can and bottle lanes.', des: 'Máquina dedicada a bebidas frías, con carriles para latas y botellas.' },
+    { key: 'glass', en: 'Glass Front Drink', es: 'Bebidas con Frente de Vidrio', den: 'Premium glass-front drink machine with maximum product visibility.', des: 'Máquina premium de bebidas con frente de vidrio y máxima visibilidad del producto.' }
+  ];
+  var arSheet = makeSheet('fsai2ArSheet');
+  var arPanel = arSheet.querySelector('.fsai-panel');
+  arPanel.innerHTML =
+    headHTML('See it in your space', 'Mírala en tu espacio') +
+    '<p class="fsai-sub">' + t('Choose a machine to preview it as a full-size 3D hologram in your space.', 'Elige una máquina para verla como un holograma 3D a tamaño real en tu espacio.') + '</p>' +
+    '<div class="fsai2-mgrid" id="fsai2MachGrid"></div>' +
+    '<button type="button" class="fsai2-btn primary" id="fsai2ArGo" disabled>' + t('View in your space', 'Ver en tu espacio') + '</button>' +
+    '<div class="fsai2-result" id="fsai2ArResult" hidden></div>';
+  var arBuilt = false, arSel = null;
+  function machineImgs() {
+    var out = {};
+    var host = $('txtbuilder');
+    if (!host) return out;
+    var src = host.textContent || '';
+    MACHINES.forEach(function (m) {
+      var re = new RegExp(m.key + ":\\{name:'[^']*',desc:'[^']*',img:'(data:[^']+)'");
+      var hit = src.match(re);
+      if (hit) out[m.key] = hit[1];
+    });
+    return out;
+  }
+  function buildArGrid() {
+    if (arBuilt) return;
+    arBuilt = true;
+    var imgs = machineImgs();
+    $('fsai2MachGrid').innerHTML = MACHINES.map(function (m) {
+      var media = imgs[m.key]
+        ? '<img loading="lazy" decoding="async" src="' + imgs[m.key] + '" alt="">'
+        : '<span class="fsai2-slotph">' + esc(m.en) + '</span>';
+      return '<button type="button" class="fsai2-mach" data-mach="' + m.key + '">' + media +
+        '<b>' + t(m.en, m.es) + '</b><small>' + t(m.den, m.des) + '</small></button>';
+    }).join('');
+    arPanel.querySelectorAll('.fsai2-mach').forEach(function (b) {
+      b.addEventListener('click', function () {
+        arSel = b.getAttribute('data-mach');
+        arPanel.querySelectorAll('.fsai2-mach').forEach(function (x) { x.classList.toggle('on', x === b); });
+        $('fsai2ArGo').disabled = false;
+      });
+    });
+  }
+  $('fsai2OpenAr').addEventListener('click', function () { buildArGrid(); arSheet.hidden = false; });
+  $('fsai2ArGo').addEventListener('click', function () {
+    var box = $('fsai2ArResult');
+    box.innerHTML = statusBox(t('AR — Not connected. The 3D hologram arrives at launch.', 'RA — Sin conexión. El holograma 3D llega con el lanzamiento.'));
+    box.hidden = false;
+  });
+
+  /* ================= shared wiring ================= */
+  $('fsai2OpenScanner').addEventListener('click', function () { scanSheet.hidden = false; });
+  document.querySelectorAll('.fsai2-in').forEach(function (el) {
+    el.addEventListener('input', function () { el.classList.remove('bad'); });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { scanSheet.hidden = true; reqSheet.hidden = true; refSheet.hidden = true; arSheet.hidden = true; }
+  });
+  /* controls contract: a feature switched off in the admin panel hides its entry */
+  if (!featureOn('placement_assistant')) {
+    var pc = $('fsaiPlaceCard');
+    if (pc) pc.style.display = 'none';
+  }
+  function syncLang() {
+    var es = isEs();
+    scanSheet.setAttribute('aria-label', es ? 'Escáner de productos' : 'Product Scanner');
+    reqSheet.setAttribute('aria-label', es ? 'Pide un producto' : 'Request a product');
+    refSheet.setAttribute('aria-label', es ? 'Envía un referido' : 'Forward a referral');
+    arSheet.setAttribute('aria-label', es ? 'Mírala en tu espacio' : 'See it in your space');
+    [scanSheet, reqSheet, refSheet, arSheet].forEach(function (s) {
+      var x = s.querySelector('.fsai-x');
+      if (x) x.setAttribute('aria-label', es ? 'Cerrar' : 'Close');
+    });
+  }
+  document.querySelectorAll('input[name=lang]').forEach(function (r) { r.addEventListener('change', syncLang); });
+  syncLang();
+})();
+
+</script>
+<!-- OWNER-SWITCHER:START (permanent owner feature — session-gated) -->
+<style>
+/* OWNER-SWITCHER: Permanent owner feature — all switcher styles are scoped to the osw- prefix. */
+.osw-link{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:calc(84px + env(safe-area-inset-bottom));z-index:250;display:inline-flex;align-items:center;gap:7px;max-width:calc(100vw - 24px);min-height:36px;padding:0 12px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(18,19,24,.88);box-shadow:0 8px 24px rgba(0,0,0,.32);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);color:rgba(255,255,255,.84);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;font-size:12px;font-weight:650;line-height:1;letter-spacing:.01em;text-decoration:none;-webkit-tap-highlight-color:transparent}
+.osw-link:hover{background:rgba(30,31,38,.94);color:#fff}
+.osw-link:focus-visible{outline:2px solid rgba(255,255,255,.78);outline-offset:3px}
+.osw-dot{flex:0 0 auto;width:6px;height:6px;border-radius:50%;background:rgba(255,180,84,.9);box-shadow:0 0 8px rgba(255,180,84,.45)}
+.osw-label{white-space:nowrap}
+@media (min-width:1024px){.osw-link{right:18px;bottom:18px}}
+</style>
+<script>
+/* OWNER-SWITCHER: Permanent owner feature — this script owns only the .osw-link node it creates. */
+(function(){
+  'use strict';
+
+  /*
+   * PRODUCTION SESSION GATE: In the finished app, the authenticated session
+   * bootstrap must set window.SLC_OWNER = true only for Bori's signed-in
+   * owner session and window.SLC_OWNER = false for every non-owner session
+   * before this block runs. This preview has no owner authentication yet, so
+   * the flag is intentionally left unset and the permanent owner switcher
+   * renders for preview use.
+   */
+  if (window.SLC_OWNER === false) return;
+  if (document.querySelector('.osw-link')) return;
+
+  var OSW_TEXT = {
+    en: 'Back to admin',
+    es: 'Volver al panel'
+  };
+
+  function oswIsSpanish(){
+    /* This app resolves its language from the boot stamp on <html>
+       (data-fs-lang), kept in sync with document.lang, the #lang-es radio
+       and the fs_lang storage key — read them in that order. */
+    var stamped = document.documentElement.getAttribute('data-fs-lang');
+    if (stamped) return stamped.toLowerCase().indexOf('es') === 0;
+    var languageRadio = document.getElementById('lang-es');
+    if (languageRadio) return !!languageRadio.checked;
+    try {
+      if (window.localStorage.getItem('fs_lang') === 'es') return true;
+    } catch (error) {}
+    return (document.documentElement.getAttribute('lang') || '').toLowerCase().indexOf('es') === 0;
+  }
+
+  var link = document.createElement('a');
+  link.className = 'osw-link';
+  link.href = '../admin/';
+
+  var dot = document.createElement('span');
+  dot.className = 'osw-dot';
+  dot.setAttribute('aria-hidden', 'true');
+
+  var label = document.createElement('span');
+  label.className = 'osw-label';
+
+  function oswSyncLabel(){
+    var spanish = oswIsSpanish();
+    var text = spanish ? OSW_TEXT.es : OSW_TEXT.en;
+    label.textContent = text;
+    link.setAttribute('aria-label', text);
+    link.setAttribute('lang', spanish ? 'es' : 'en');
+  }
+
+  link.appendChild(dot);
+  link.appendChild(label);
+  oswSyncLabel();
+
+  /* Preserve normal anchor navigation; this handler only refreshes the label at click time. */
+  link.addEventListener('click', oswSyncLabel);
+  document.body.appendChild(link);
+
+  if (window.MutationObserver) {
+    new MutationObserver(oswSyncLabel).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-fs-lang', 'lang']
+    });
+  }
+  window.setInterval(oswSyncLabel, 1000);
+})();
+</script>
+<!-- OWNER-SWITCHER:END -->
+</body></html>
