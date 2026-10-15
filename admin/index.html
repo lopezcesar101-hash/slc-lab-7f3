@@ -769,6 +769,7 @@ return `<div class="eb">Settings</div><h2>Settings</h2>
 <div class="card"><div class="row"><h3>Notification types</h3>${LOCAL}</div>${NOTIF.map(([k,l])=>`<button type="button" class="tg" data-nt="${k}"><span>${l}</span>${tg(n[k])}</button>`).join('')}<p style="margin-top:6px">Saved in this mock only. Live: saved to the app backend.</p></div>
 <div class="card"><div class="row"><h3>Device settings</h3><span class="pill local">This device only</span></div><p>These don’t change your phone’s system permissions.</p>${PERMS.map(k=>`<button type="button" class="tg" data-pt="${k}"><span>${k}</span>${tg(p[k])}</button>`).join('')}</div>
 
+${aiControlsCard()}
 <div class="card"><h3>Demo data</h3><p>Resets this device to the original sample data (removes your own demo entries).</p><div class="acts"><button class="btn2" id="sClear">Reset sample data</button><button class="slc-btn primary" id="sOut">Sign out</button></div></div>
 <div class="card"><p>Refunds go through the app only (Your Business LLC). Customer satisfaction over anything; hassle-free return of money or product.</p></div>`};
 let countNext=true,prevVal=null;
@@ -779,7 +780,7 @@ function go(t){if(t==='finance'){t=arguments[1]==='bills'?'bills':'reports'}tab=
 function val(id){const e=document.getElementById(id);return e?e.value.trim():''}
 function fname(id){const e=document.getElementById(id);return e&&e.files&&e.files[0]?e.files[0].name:''}
 function bindTab(){const tab=cur;
- if(tab==='overview'){const ag=$('#askGo');if(ag)ag.onclick=()=>aiAskSubmit();const aq=$('#askQ');if(aq){aq.value=askState.q||'';aq.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();aiAskSubmit()}})}document.querySelectorAll('[data-askq]').forEach(b=>b.onclick=()=>{askState.q=b.getAttribute('data-askq');askState.res=aiAsk(askState.q);render()})}
+ if(tab==='overview'){const ag=$('#askGo');if(ag)ag.onclick=()=>aiAskSubmit();const aq=$('#askQ');if(aq){aq.value=askState.q||'';aq.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();aiAskSubmit()}})}document.querySelectorAll('[data-askq]').forEach(b=>b.onclick=()=>aiAskSubmit(b.getAttribute('data-askq')))}
 
  if(tab==='calendar'&&$('#eSave'))$('#eSave').onclick=()=>{if(!val('eT'))return;push('events',{date:calSel,title:val('eT'),time:val('eTm'),details:val('eD')});render()};
  if(tab==='vehicle'){$('#vSave').onclick=()=>{const v=LS('vehicle')||{};const mi=val('vMi');if(mi&&mi!==v.mileage)v.mileageAt=new Date().toISOString();Object.assign(v,{name:val('vN'),mileage:mi});const f=fname('vIns');if(f)v.ins=f;SV('vehicle',v);render()};
@@ -822,6 +823,9 @@ $('#slcMain').addEventListener('click',e=>{const t=e.target.closest('button,[dat
  else if(d.rp){const r=document.querySelector(`[data-rr="${d.rp}"]`).value.trim();if(!r){alert(tr('Enter the payout reference first.'));return}upd('refunds',d.rp,x=>Object.assign(x,{payout_status:'completed',payout_reference:r}))}
  else if(d.nt){const n=LS('notif')||{new_request:1,machine_problem:1,refund_request:1,bill_due:1,maintenance_due:1};n[d.nt]=n[d.nt]?0:1;SV('notif',n);render()}
  else if(d.pt){const p=LS('perms')||{};p[d.pt]=!p[d.pt];SV('perms',p);render()}
+ else if(d.aif){SLC_AI.setFeature(d.aif,!SLC_AI.featureOn(d.aif));render()}
+ else if(d.aicap){const v=parseInt((document.getElementById('aiCap')||{}).value,10);if(v>0)SLC_AI.setCap(v);render()}
+ else if(d.aireset){SLC_AI.resetUsage();render()}
 });
 function dockClick(e){const b=e.target.closest('button');if(!b)return;if(b.dataset.more!=null){moreOpen=b.dataset.more==='1'&&!moreOpen;dock();xl($('#slcDock'));return}moreOpen=false;{if(b.dataset.tab==='inbox'&&tab!=='inbox')inboxF='all';ibSel=null;go(b.dataset.tab)}}
 {const _r=render;render=function(){_r();afterRender()}}$('#slcMain').addEventListener('scroll',slimChk,{passive:true});{const hd=()=>{const h=document.querySelector('#slc .hd');if(h)document.getElementById('slc').style.setProperty('--hdh',h.offsetHeight+'px')};hd();let lw=wide();addEventListener('resize',()=>{hd();if(wide()!==lw){lw=wide();if(document.getElementById('slc').offsetParent!==null||1)render()}})}$('#slcValS').addEventListener('click',e=>{if(e.target.id==='slcValS'||e.target.id==='slcValClose')openVal(false)});
@@ -884,7 +888,40 @@ document.querySelectorAll('input[name=lang]').forEach(r=>r.addEventListener('cha
  * endpoint's parsed JSON. Until then connected:false and call() resolves {ok:false,
  * connected:false}; the AI-powered flows show their honest "AI — Not connected" state.
  * NO network calls happen today. */
-window.SLC_AI={connected:false,call:function(task,payload){return Promise.resolve({ok:false,connected:false})}};
+/* ----- Shared AI controls contract (IDENTICAL in the admin and customer apps — do not drift) -----
+ * Registry ids: admin 'receipt_snap','doc_autofile','inbox_copilot','ask_data';
+ *               customer 'scanner','compare_scans','placement_assistant'.
+ * localStorage 'slc_ai_controls_v1': {cap:20, restHours:12, features:{<id>:{on:true}}} (defaults when absent)
+ * localStorage 'slc_ai_usage_v1':    {count:0, perFeature:{}, restUntil:0, windowStart:<ts>} — THIS phone's ledger.
+ * call(task, payload): task maps to a feature id; feature off -> {ok:false, off:true};
+ * resting (restUntil > now) -> {ok:false, capped:true, resetAt:restUntil}; count >= cap -> the rest
+ * starts now (restUntil = now + restHours) and the capped result returns; an expired rest auto-resets
+ * the ledger before counting; otherwise the use is counted (count + perFeature) and the call resolves
+ * {ok:false, connected:false} — today's honest state. Still NO network calls; the /api/ai activation
+ * contract above is unchanged. */
+const AI_FEATURES=[['receipt_snap','Receipt snap','Foto de recibo','Admin'],['doc_autofile','Document auto-file','Archivo automático','Admin'],['inbox_copilot','Inbox co-pilot','Copiloto de mensajes','Admin'],['ask_data','Ask your data','Pregunta a tus datos','Admin'],['scanner','Product scanner','Escáner de productos','Customer'],['compare_scans','Compare scans','Comparar escaneos','Customer'],['placement_assistant','Placement assistant','Asistente de colocación','Customer']];
+const AI_TASK2FEAT={receipt_snap:'receipt_snap',receipt:'receipt_snap',doc_autofile:'doc_autofile',autofile:'doc_autofile',inbox_copilot:'inbox_copilot',draft_reply:'inbox_copilot',ask_data:'ask_data',ask:'ask_data',scanner:'scanner',scan_product:'scanner',compare_scans:'compare_scans',compare:'compare_scans',placement_assistant:'placement_assistant',placement:'placement_assistant'};
+function aiControlsRaw(){let c=null;try{c=LS('ai_controls_v1')}catch(e){}if(!c||typeof c!=='object')c={};if(!(c.cap>0))c.cap=20;if(!(c.restHours>0))c.restHours=12;if(!c.features||typeof c.features!=='object')c.features={};return c}
+function aiUsageRaw(){let u=null;try{u=LS('ai_usage_v1')}catch(e){}if(!u||typeof u!=='object')u={};if(!(u.count>=0))u.count=0;if(!u.perFeature||typeof u.perFeature!=='object')u.perFeature={};if(!(u.restUntil>=0))u.restUntil=0;if(!u.windowStart)u.windowStart=Date.now();return u}
+window.SLC_AI={connected:false,
+ controls:aiControlsRaw,usage:aiUsageRaw,
+ featureOn:function(id){const f=aiControlsRaw().features[id];return !(f&&f.on===false)},
+ setFeature:function(id,on){const c=aiControlsRaw();c.features[id]={on:!!on};SV('ai_controls_v1',c)},
+ setCap:function(n){const c=aiControlsRaw();c.cap=n;SV('ai_controls_v1',c)},
+ resetUsage:function(){SV('ai_usage_v1',{count:0,perFeature:{},restUntil:0,windowStart:Date.now()})},
+ call:function(task,payload){const feat=AI_TASK2FEAT[task]||task,reg=AI_FEATURES.some(f=>f[0]===feat),c=aiControlsRaw();
+  if(reg&&!SLC_AI.featureOn(feat))return Promise.resolve({ok:false,off:true});
+  const now=Date.now();let u=aiUsageRaw();
+  if(u.restUntil>now)return Promise.resolve({ok:false,capped:true,resetAt:u.restUntil});
+  if(u.restUntil>0){u={count:0,perFeature:{},restUntil:0,windowStart:now};SV('ai_usage_v1',u)}
+  if(u.count>=c.cap){u.restUntil=now+c.restHours*3600*1000;SV('ai_usage_v1',u);return Promise.resolve({ok:false,capped:true,resetAt:u.restUntil})}
+  u.count++;if(reg)u.perFeature[feat]=(u.perFeature[feat]||0)+1;if(!u.windowStart)u.windowStart=now;SV('ai_usage_v1',u);
+  return Promise.resolve({ok:false,connected:false})}};
+function aiFmtT(ts){try{return new Date(ts).toLocaleString(ES()?'es-US':'en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}catch(e){return ''}}
+function aiGateMsg(res){const es=ES();
+ if(res&&res.off)return es?'Desactivado — apagado en Controles de IA.':'Off — turned off in AI controls.';
+ if(res&&res.capped){const h=aiControlsRaw().restHours,t=res.resetAt?aiFmtT(res.resetAt):'';return es?`La IA está descansando — se restablece en ${h} horas (vuelve: ${t}).`:`AI is resting — resets in ${h} hours (back at ${t}).`}
+ return ''}
 Object.assign(SLC_ES,{
 "Your morning brief":"Tu resumen de la mañana",
 "From your data":"De tus datos",
@@ -903,8 +940,28 @@ Object.assign(SLC_ES,{
 "Draft reply with AI":"Redactar respuesta con IA",
 "AI — Not connected. Drafts arrive when the AI connects at launch.":"IA — Sin conexión. Los borradores llegan cuando la IA se conecte en el lanzamiento.",
 "Your reply":"Tu respuesta",
-"Write your reply…":"Escribe tu respuesta…"
+"Write your reply…":"Escribe tu respuesta…",
+"AI controls":"Controles de IA",
+"Receipt snap":"Foto de recibo",
+"Document auto-file":"Archivo automático",
+"Inbox co-pilot":"Copiloto de mensajes",
+"Product scanner":"Escáner de productos",
+"Compare scans":"Comparar escaneos",
+"Placement assistant":"Asistente de colocación",
+"Save limit":"Guardar límite",
+"Reset usage counters":"Restablecer contadores de uso",
+"Off — turned off in AI controls.":"Desactivado — apagado en Controles de IA."
 });
+/* ---------- AI controls panel (Settings › General) ----------
+ * One row per registered feature (both apps), its on/off switch, and THIS device's use count.
+ * Honest scope: the ledger lives on this phone; per-phone ledgers aggregate when the AI back
+ * end connects at launch. The morning brief is local computation, not an AI call — it is not
+ * in the registry and never counts. */
+function aiControlsCard(){const c=SLC_AI.controls(),u=SLC_AI.usage(),es=ES(),now=Date.now(),resting=u.restUntil>now;
+ const row=f=>{const on=SLC_AI.featureOn(f[0]),n=(u.perFeature&&u.perFeature[f[0]])||0;
+  return `<button type="button" class="tg" data-aif="${f[0]}"><span>${es?f[2]:f[1]} <small style="color:var(--muted)">· ${f[3]==='Admin'?(es?'Administración':'Admin'):(es?'Cliente':'Customer')} · ${n} ${es?'usos':'uses'}</small></span><i style="color:${on?'var(--green)':'rgba(255,255,255,.4)'}">${on?'On':'Off'}</i></button>`};
+ const grp=s=>`<div style="margin-top:10px"><small style="color:var(--muted);font-weight:700;letter-spacing:.1em">${s==='Admin'?(es?'ADMINISTRACIÓN':'ADMIN'):(es?'CLIENTE':'CUSTOMER')}</small>${AI_FEATURES.filter(f=>f[3]===s).map(row).join('')}</div>`;
+ return `<div class="card"><div class="row"><h3>${es?'Controles de IA':'AI controls'}</h3>${LOCAL}</div><p style="font-size:12px;color:var(--muted)">${es?'Los conteos son de este dispositivo. Cada teléfono lleva su propio conteo; los totales se combinan cuando la IA se conecte en el lanzamiento.':'Counts are on this device. Each phone keeps its own count; totals combine when the AI connects at launch.'}</p><p style="margin-top:8px">${es?'Usos de IA en este dispositivo':'AI uses on this device'}: <b>${u.count||0} / ${c.cap}</b>${resting?` · <span style="color:var(--amber)">${es?'Descansando hasta':'Resting until'} ${aiFmtT(u.restUntil)}</span>`:''}</p>${grp('Admin')}${grp('Customer')}<label class="f" style="margin-top:12px"><span>${es?'Límite de usos por teléfono':'Use limit per phone'}</span><input id="aiCap" type="number" min="1" step="1" inputmode="numeric" value="${c.cap}"/></label><div class="acts"><button type="button" class="slc-btn" data-aicap="1">${es?'Guardar límite':'Save limit'}</button></div><p style="margin-top:8px;font-size:12px;color:var(--muted)">${es?'Descanso tras alcanzar el límite':'Rest after the limit'}: <b>${c.restHours} ${es?'horas':'hours'}</b></p><div class="acts"><button type="button" class="btn2" data-aireset="1">${es?'Restablecer contadores de uso':'Reset usage counters'}</button></div></div>`}
 /* ---------- Feature 1: Morning brief (real data only) ---------- */
 function aiYDate(ms){return ms.length>1?ms[0].days[ms[0].days.length-2].date:null}
 function aiDayTotal(ms,ds){let t=0;if(ds)ms.forEach(m=>{const d=m.days.find(x=>x.date===ds);if(d)t+=d.gross});return r2(t)}
@@ -987,6 +1044,8 @@ function aiAsk(qRaw){const q=aiNorm(qRaw);
  return{type:'sales',who:null,v:aiSalesFor(sd().machines,per),per}}
 function aiFmtD(d){try{return new Date(String(d)+'T00:00').toLocaleDateString(ES()?'es-US':'en-US',{month:'short',day:'numeric',year:'numeric'})}catch(e){return d||''}}
 function aiAskFormat(r){const es=ES();if(!r)return'';
+ if(r.type==='off')return `<div class="aians"><p>${aiGateMsg({off:true})}</p></div>`;
+ if(r.type==='capped')return `<div class="aians"><p>${aiGateMsg({capped:true,resetAt:r.resetAt})}</p></div>`;
  if(r.type==='cant')return `<div class="aians"><p>${es?'Todavía no puedo responder eso — las respuestas completas llegan cuando la IA se conecte en el lanzamiento.':'I can\'t answer that yet — fuller answers arrive when the AI connects at launch.'}</p><p style="color:var(--muted)">${es?'Prueba una de las preguntas de ejemplo de arriba.':'Try one of the example questions above.'}</p></div>`;
  if(r.type==='amb')return `<div class="aians"><p>${es?`Ese nombre coincide con más de una máquina: ${r.names.map(esc).join(', ')}. Pregunta con el nombre completo.`:`That name matches more than one machine: ${r.names.map(esc).join(', ')}. Ask with the full name.`}</p></div>`;
  if(r.type==='sales'){const lab=aiPerLabel(r.per.k);
@@ -1009,7 +1068,7 @@ function aiAskFormat(r){const es=ES();if(!r)return'';
   return h+'</div>'}
  return''}
 function aiAskCard(){return `<div class="card"><div class="row"><h3>Ask your data</h3></div><div class="aiqrow"><input id="askQ" placeholder="Ask about sales, Zelle, bills…" autocomplete="off"/><button type="button" class="slc-btn primary" id="askGo">Ask</button></div><div class="chips" style="margin-top:10px">${AI_EXAMPLES.map(q=>`<button type="button" class="chip" data-askq="${esc(q)}">${esc(q)}</button>`).join('')}</div><div id="askAns">${aiAskFormat(askState.res)}</div></div>`}
-function aiAskSubmit(){const v=val('askQ');if(!v)return;askState.q=v;askState.res=aiAsk(v);render()}
+function aiAskSubmit(qIn){const v=(qIn!=null?String(qIn):val('askQ')).trim();if(!v)return;askState.q=v;SLC_AI.call('ask_data',{q:v}).then(res=>{if(res.off)askState.res={type:'off'};else if(res.capped)askState.res={type:'capped',resetAt:res.resetAt};else askState.res=aiAsk(v);render()})}
 /* ---------- Feature 3: receipt snap + auto-file + inbox draft entry points (honest not-connected states) ---------- */
 const AI_SNAP_MSG='AI — Not connected. Automatic reading arrives when the AI connects at launch; for now the photo is attached and you can fill the details below as usual.';
 const AI_SNAP_MSG2='AI — Not connected. Automatic reading arrives when the AI connects at launch; for now, add the photo with the Receipt field below and fill the details as usual.';
@@ -1018,9 +1077,9 @@ function aiSnapDone(inp){const f=inp.files&&inp.files[0];if(!f)return;const pre=
  try{const dt=new DataTransfer();dt.items.add(f);if(tgt){tgt.files=dt.files;ok=!!(tgt.files&&tgt.files.length)}}catch(e){}
  if(msg){msg.textContent=tr(ok?AI_SNAP_MSG:AI_SNAP_MSG2);msg.style.display='block'}}
 document.addEventListener('click',function(e){const t=e.target;if(!t||!t.closest)return;
- const sn=t.closest('#pSnap,#zSnap');if(sn){const f=document.getElementById(sn.id+'F');if(f)f.click();return}
- if(t.closest('[data-aiauto]')){const n=document.getElementById('dcAiNote');if(n)n.style.display='block';return}
- const dr=t.closest('[data-aidraft]');if(dr){const p=document.querySelector('[data-aipanel="'+dr.getAttribute('data-aidraft')+'"]');if(p)p.style.display=(p.style.display==='none'||!p.style.display)?'block':'none'}});
+ const sn=t.closest('#pSnap,#zSnap');if(sn){const msg=document.getElementById(sn.id.charAt(0)+'SnapMsg');SLC_AI.call('receipt_snap').then(res=>{if(res.off||res.capped){if(msg){msg.textContent=aiGateMsg(res);msg.style.display='block'}return}const f=document.getElementById(sn.id+'F');if(f)f.click()});return}
+ if(t.closest('[data-aiauto]')){const n=document.getElementById('dcAiNote');SLC_AI.call('doc_autofile').then(res=>{if(n){n.textContent=(res.off||res.capped)?aiGateMsg(res):tr('AI — Not connected. Automatic filing arrives when the AI connects at launch; for now, pick the type below and add the document as usual.');n.style.display='block'}});return}
+ const dr=t.closest('[data-aidraft]');if(dr){const p=document.querySelector('[data-aipanel="'+dr.getAttribute('data-aidraft')+'"]');if(!p)return;if(p.style.display==='block'){p.style.display='none';return}SLC_AI.call('inbox_copilot').then(res=>{const n=p.querySelector('.note');if(n)n.textContent=(res.off||res.capped)?aiGateMsg(res):tr('AI — Not connected. Drafts arrive when the AI connects at launch.');p.style.display='block'})}});
 document.addEventListener('change',function(e){if(e.target&&(e.target.id==='pSnapF'||e.target.id==='zSnapF'))aiSnapDone(e.target)});
 
 window.SLC={go,open,signOut,MOCK,REFUND_CAP};
@@ -1202,4 +1261,82 @@ setInterval(tag,900);document.addEventListener('click',function(){setTimeout(tag
 #slc .dchips .chip.on{background:linear-gradient(135deg,#ff7a59,#ffb454)!important;color:#33150a!important;border-color:transparent!important}
 #slc .dcount{background:#2b2c33!important;border-color:#484a52!important;color:#fff!important}
 </style>
+
+<!-- OWNER-SWITCHER:START (permanent owner feature — session-gated) -->
+<style>
+/* OWNER-SWITCHER: Permanent owner feature — all switcher styles are scoped to the osw- prefix. */
+.osw-link{position:fixed;right:max(12px,env(safe-area-inset-right));bottom:calc(84px + env(safe-area-inset-bottom));z-index:250;display:inline-flex;align-items:center;gap:7px;max-width:calc(100vw - 24px);min-height:36px;padding:0 12px;border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(18,19,24,.88);box-shadow:0 8px 24px rgba(0,0,0,.32);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);color:rgba(255,255,255,.84);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;font-size:12px;font-weight:650;line-height:1;letter-spacing:.01em;text-decoration:none;-webkit-tap-highlight-color:transparent}
+.osw-link:hover{background:rgba(30,31,38,.94);color:#fff}
+.osw-link:focus-visible{outline:2px solid rgba(255,255,255,.78);outline-offset:3px}
+.osw-dot{flex:0 0 auto;width:6px;height:6px;border-radius:50%;background:rgba(255,180,84,.9);box-shadow:0 0 8px rgba(255,180,84,.45)}
+.osw-label{white-space:nowrap}
+@media (min-width:1024px){.osw-link{right:18px;bottom:18px}}
+</style>
+<script>
+/* OWNER-SWITCHER: Permanent owner feature — this script owns only the .osw-link node it creates. */
+(function(){
+  'use strict';
+
+  /*
+   * PRODUCTION SESSION GATE: In the finished app, the authenticated session
+   * bootstrap must set window.SLC_OWNER = true only for Bori's signed-in
+   * owner session and window.SLC_OWNER = false for every non-owner session
+   * before this block runs. This preview has no owner authentication yet, so
+   * the flag is intentionally left unset and the permanent owner switcher
+   * renders for preview use.
+   */
+  if (window.SLC_OWNER === false) return;
+  if (document.querySelector('.osw-link')) return;
+
+  var OSW_TEXT = {
+    en: 'View customer side',
+    es: 'Ver la parte del cliente'
+  };
+
+  function oswIsSpanish(){
+    var languageRadio = document.getElementById('lang-es');
+    if (languageRadio) return !!languageRadio.checked;
+    try {
+      if (window.localStorage.getItem('slc_lang') === 'es') return true;
+    } catch (error) {}
+    return (document.documentElement.getAttribute('lang') || '').toLowerCase().indexOf('es') === 0;
+  }
+
+  var link = document.createElement('a');
+  link.className = 'osw-link';
+  link.href = '../customer/';
+
+  var dot = document.createElement('span');
+  dot.className = 'osw-dot';
+  dot.setAttribute('aria-hidden', 'true');
+
+  var label = document.createElement('span');
+  label.className = 'osw-label';
+
+  function oswSyncLabel(){
+    var spanish = oswIsSpanish();
+    var text = spanish ? OSW_TEXT.es : OSW_TEXT.en;
+    label.textContent = text;
+    link.setAttribute('aria-label', text);
+    link.setAttribute('lang', spanish ? 'es' : 'en');
+  }
+
+  link.appendChild(dot);
+  link.appendChild(label);
+  oswSyncLabel();
+
+  /* Preserve normal anchor navigation; this handler only refreshes the label at click time. */
+  link.addEventListener('click', oswSyncLabel);
+  document.body.appendChild(link);
+
+  if (window.MutationObserver) {
+    new MutationObserver(oswSyncLabel).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['lang']
+    });
+  }
+  window.setInterval(oswSyncLabel, 1000);
+})();
+</script>
+<!-- OWNER-SWITCHER:END -->
 </body></html>
